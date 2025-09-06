@@ -52,14 +52,26 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	cFilename := C.CString(filename)
 	defer C.free(unsafe.Pointer(cFilename))
 
-	var conn *C.libsql_connection
-	result := C.libsql_open(cFilename, &conn)
-
-	if result != 0 {
-		return nil, fmt.Errorf("failed to open libsql connection: %d", int(result))
+	var db C.libsql_database_t
+	var outErr *C.char
+	rc := C.libsql_open_file(cFilename, &db, (**C.char)(unsafe.Pointer(&outErr)))
+	if rc != 0 {
+		if outErr != nil {
+			return nil, fmt.Errorf("failed to open libsql database: %s", C.GoString(outErr))
+		}
+		return nil, fmt.Errorf("failed to open libsql database: code %d", int(rc))
 	}
 
-	return &Connection{conn: conn}, nil
+	var conn C.libsql_connection_t
+	rc = C.libsql_connect(db, &conn, (**C.char)(unsafe.Pointer(&outErr)))
+	if rc != 0 {
+		if outErr != nil {
+			return nil, fmt.Errorf("failed to connect libsql: %s", C.GoString(outErr))
+		}
+		return nil, fmt.Errorf("failed to connect libsql: code %d", int(rc))
+	}
+
+	return &Connection{conn: (*C.libsql_connection)(unsafe.Pointer(conn))}, nil
 }
 
 // Driver returns the driver
