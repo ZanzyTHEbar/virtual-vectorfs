@@ -1,12 +1,11 @@
 package customlibsql
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../../lib
-#cgo LDFLAGS: -L${SRCDIR}/../../../../lib -lsql -lm -ldl
-#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/../../../../lib -lsql-amd64 -lm -ldl
-#cgo linux,arm64 LDFLAGS: -L${SRCDIR}/../../../../lib -lsql-arm64 -lm -ldl
+#cgo CFLAGS: -I${SRCDIR}/../../../build/artifacts/artifacts
+#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/../../../build/artifacts/artifacts -lsql-amd64 -lm -ldl
+#cgo linux,arm64 LDFLAGS: -L${SRCDIR}/../../../build/artifacts/artifacts -lsql-arm64 -lm -ldl
 
-#include <libsql.h>
+#include "libsql.h"
 #include <stdlib.h>
 */
 import "C"
@@ -129,24 +128,24 @@ func (s *Statement) NumInput() int {
 
 func (s *Statement) Exec(args []driver.Value) (driver.Result, error) {
 	// Reset statement
-	C.libsql_reset(s.stmt)
+	C.libsql_reset_stmt(s.stmt)
 
 	// Bind parameters
 	for i, arg := range args {
 		var result C.int
 		switch v := arg.(type) {
 		case int64:
-			result = C.libsql_bind_int64(s.stmt, C.int(i+1), C.longlong(v))
+			result = C.libsql_bind_int(s.stmt, C.int(i+1), C.longlong(v), nil)
 		case float64:
-			result = C.libsql_bind_double(s.stmt, C.int(i+1), C.double(v))
+			result = C.libsql_bind_float(s.stmt, C.int(i+1), C.double(v), nil)
 		case string:
 			cStr := C.CString(v)
 			defer C.free(unsafe.Pointer(cStr))
-			result = C.libsql_bind_text(s.stmt, C.int(i+1), cStr, C.int(len(v)))
+			result = C.libsql_bind_string(s.stmt, C.int(i+1), cStr, nil)
 		case []byte:
-			result = C.libsql_bind_blob(s.stmt, C.int(i+1), (*C.uchar)(unsafe.Pointer(&v[0])), C.int(len(v)))
+			result = C.libsql_bind_blob(s.stmt, C.int(i+1), (*C.uchar)(unsafe.Pointer(&v[0])), C.int(len(v)), nil)
 		case nil:
-			result = C.libsql_bind_null(s.stmt, C.int(i+1))
+			result = C.libsql_bind_null(s.stmt, C.int(i+1), nil)
 		default:
 			return nil, fmt.Errorf("unsupported parameter type: %T", v)
 		}
@@ -156,12 +155,13 @@ func (s *Statement) Exec(args []driver.Value) (driver.Result, error) {
 	}
 
 	// Execute
-	result := C.libsql_step(s.stmt)
-	if result != 100 { // SQLITE_ROW
-		if result == 101 { // SQLITE_DONE
-			return &Result{stmt: s.stmt}, nil
+	var outErr *C.char
+	res := C.libsql_execute_stmt(s.stmt, (**C.char)(unsafe.Pointer(&outErr)))
+	if res != 0 {
+		if outErr != nil {
+			return nil, fmt.Errorf("execution failed: %s", C.GoString(outErr))
 		}
-		return nil, fmt.Errorf("execution failed: %d", int(result))
+		return nil, fmt.Errorf("execution failed: code %d", int(res))
 	}
 
 	return &Result{stmt: s.stmt}, nil
@@ -169,24 +169,24 @@ func (s *Statement) Exec(args []driver.Value) (driver.Result, error) {
 
 func (s *Statement) Query(args []driver.Value) (driver.Rows, error) {
 	// Reset statement
-	C.libsql_reset(s.stmt)
+	C.libsql_reset_stmt(s.stmt)
 
 	// Bind parameters (same as Exec)
 	for i, arg := range args {
 		var result C.int
 		switch v := arg.(type) {
 		case int64:
-			result = C.libsql_bind_int64(s.stmt, C.int(i+1), C.longlong(v))
+			result = C.libsql_bind_int(s.stmt, C.int(i+1), C.longlong(v), nil)
 		case float64:
-			result = C.libsql_bind_double(s.stmt, C.int(i+1), C.double(v))
+			result = C.libsql_bind_float(s.stmt, C.int(i+1), C.double(v), nil)
 		case string:
 			cStr := C.CString(v)
 			defer C.free(unsafe.Pointer(cStr))
-			result = C.libsql_bind_text(s.stmt, C.int(i+1), cStr, C.int(len(v)))
+			result = C.libsql_bind_string(s.stmt, C.int(i+1), cStr, nil)
 		case []byte:
-			result = C.libsql_bind_blob(s.stmt, C.int(i+1), (*C.uchar)(unsafe.Pointer(&v[0])), C.int(len(v)))
+			result = C.libsql_bind_blob(s.stmt, C.int(i+1), (*C.uchar)(unsafe.Pointer(&v[0])), C.int(len(v)), nil)
 		case nil:
-			result = C.libsql_bind_null(s.stmt, C.int(i+1))
+			result = C.libsql_bind_null(s.stmt, C.int(i+1), nil)
 		default:
 			return nil, fmt.Errorf("unsupported parameter type: %T", v)
 		}
@@ -195,7 +195,18 @@ func (s *Statement) Query(args []driver.Value) (driver.Rows, error) {
 		}
 	}
 
-	return &Rows{stmt: s.stmt}, nil
+	// Execute query and get rows via libsql_query_stmt
+	var rows C.libsql_rows_t
+	var outErr *C.char
+	rc := C.libsql_query_stmt(s.stmt, &rows, (**C.char)(unsafe.Pointer(&outErr)))
+	if rc != 0 {
+		if outErr != nil {
+			return nil, fmt.Errorf("query failed: %s", C.GoString(outErr))
+		}
+		return nil, fmt.Errorf("query failed: code %d", int(rc))
+	}
+
+	return &Rows{rows: rows}, nil
 }
 
 // Result implementation
@@ -213,56 +224,61 @@ func (r *Result) RowsAffected() (int64, error) {
 
 // Rows implementation
 type Rows struct {
-	stmt    *C.libsql_stmt
+	rows    C.libsql_rows_t
 	columns []string
 }
 
 func (r *Rows) Columns() []string {
 	if r.columns == nil {
-		// Get column count
-		colCount := int(C.libsql_column_count(r.stmt))
+		colCount := int(C.libsql_column_count(r.rows))
 		r.columns = make([]string, colCount)
-
 		for i := 0; i < colCount; i++ {
-			colName := C.libsql_column_name(r.stmt, C.int(i))
-			r.columns[i] = C.GoString(colName)
+			var name *C.char
+			C.libsql_column_name(r.rows, C.int(i), &name, nil)
+			r.columns[i] = C.GoString(name)
 		}
 	}
 	return r.columns
 }
 
 func (r *Rows) Close() error {
-	return nil // Statement will be finalized by Statement.Close()
+	C.libsql_free_rows(r.rows)
+	return nil
 }
 
 func (r *Rows) Next(dest []driver.Value) error {
-	result := C.libsql_step(r.stmt)
-
-	if result == 101 { // SQLITE_DONE
-		return fmt.Errorf("no more rows")
-	}
-
-	if result != 100 { // SQLITE_ROW
-		return fmt.Errorf("step failed: %d", int(result))
+	var outRow C.libsql_row_t
+	var outErr *C.char
+	rc := C.libsql_next_row(r.rows, &outRow, (**C.char)(unsafe.Pointer(&outErr)))
+	if rc != 0 {
+		if outErr != nil {
+			return fmt.Errorf("row error: %s", C.GoString(outErr))
+		}
+		return fmt.Errorf("row error: code %d", int(rc))
 	}
 
 	colCount := len(r.Columns())
 	for i := 0; i < colCount; i++ {
-		colType := C.libsql_column_type(r.stmt, C.int(i))
-
-		switch colType {
-		case 1: // SQLITE_INTEGER
-			dest[i] = int64(C.libsql_column_int64(r.stmt, C.int(i)))
-		case 2: // SQLITE_FLOAT
-			dest[i] = float64(C.libsql_column_double(r.stmt, C.int(i)))
-		case 3: // SQLITE_TEXT
-			text := C.libsql_column_text(r.stmt, C.int(i))
-			dest[i] = C.GoString(text)
-		case 4: // SQLITE_BLOB
-			blob := C.libsql_column_blob(r.stmt, C.int(i))
-			size := C.libsql_column_bytes(r.stmt, C.int(i))
-			dest[i] = C.GoBytes(unsafe.Pointer(blob), size)
-		case 5: // SQLITE_NULL
+		var ctype C.int
+		C.libsql_column_type(r.rows, outRow, C.int(i), &ctype, nil)
+		switch int(ctype) {
+		case 1:
+			var v C.longlong
+			C.libsql_get_int(outRow, C.int(i), &v, nil)
+			dest[i] = int64(v)
+		case 2:
+			var fv C.double
+			C.libsql_get_float(outRow, C.int(i), &fv, nil)
+			dest[i] = float64(fv)
+		case 3:
+			var s *C.char
+			C.libsql_get_string(outRow, C.int(i), &s, nil)
+			dest[i] = C.GoString(s)
+		case 4:
+			var b C.blob
+			C.libsql_get_blob(outRow, C.int(i), &b, nil)
+			dest[i] = C.GoBytes(unsafe.Pointer(b.ptr), C.int(b.len))
+		default:
 			dest[i] = nil
 		}
 	}
