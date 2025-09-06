@@ -29,10 +29,17 @@ RUN cd libsql && \
     cd bindings/c && \
     cargo build --release
 
+# Build SQLean shared modules (so they can be loaded at runtime if static-inclusion failed)
+RUN cd libsql/sqlean && \
+    if [ -f Makefile ]; then make compile-linux || true; fi || true
+
 # Extract artifacts
 RUN mkdir -p /output && \
-    cp libsql/bindings/c/target/release/libsql_experimental.a /output/libsql-amd64.a || true && \
-    cp libsql/bindings/c/include/libsql.h /output/libsql.h || true && \
+    cp libsql/bindings/c/target/release/libsql_experimental.a /output/libsql-amd64.a 2>/dev/null || true && \
+    cp libsql/bindings/c/include/libsql.h /output/libsql.h 2>/dev/null || true && \
+    # copy any built sqlean .so files
+    mkdir -p /output/sqlean && \
+    find libsql/sqlean -name "*.so" -exec cp {} /output/sqlean/ \; 2>/dev/null || true && \
     echo "commit=7eed898" > /output/build-info.txt && \
     echo "features=fts5,json1,rtree,vector,sqlean(crypto,fuzzy,math,stats,text)" >> /output/build-info.txt
 
