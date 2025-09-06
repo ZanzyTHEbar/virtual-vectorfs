@@ -128,7 +128,7 @@ type Statement struct {
 
 func (s *Statement) Close() error {
 	if s.stmt != nil {
-		C.libsql_finalize(s.stmt)
+		C.libsql_free_stmt(s.stmt)
 		s.stmt = nil
 	}
 	return nil
