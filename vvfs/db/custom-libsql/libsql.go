@@ -22,7 +22,7 @@ import (
 
 // Connection represents a libSQL database connection
 type Connection struct {
-	conn *C.libsql_connection
+	conn C.libsql_connection_t
 }
 
 // Open creates a new libSQL database connection
@@ -95,8 +95,8 @@ func (c *Connection) Prepare(query string) (driver.Stmt, error) {
 	cQuery := C.CString(query)
 	defer C.free(unsafe.Pointer(cQuery))
 
-	var stmt *C.libsql_stmt
-	result := C.libsql_prepare(c.conn, cQuery, &stmt)
+	var stmt C.libsql_stmt_t
+	result := C.libsql_prepare(c.conn, cQuery, &stmt, nil)
 
 	if result != 0 {
 		return nil, fmt.Errorf("failed to prepare statement: %d", int(result))
@@ -108,7 +108,7 @@ func (c *Connection) Prepare(query string) (driver.Stmt, error) {
 // Close closes the connection
 func (c *Connection) Close() error {
 	if c.conn != nil {
-		C.libsql_close(c.conn)
+		C.libsql_disconnect(c.conn)
 		c.conn = nil
 	}
 	return nil
@@ -122,7 +122,7 @@ func (c *Connection) Begin() (driver.Tx, error) {
 // Statement implementation
 
 type Statement struct {
-	stmt *C.libsql_stmt
+	stmt C.libsql_stmt_t
 	conn *Connection
 }
 
@@ -140,7 +140,7 @@ func (s *Statement) NumInput() int {
 
 func (s *Statement) Exec(args []driver.Value) (driver.Result, error) {
 	// Reset statement
-	C.libsql_reset_stmt(s.stmt)
+	C.libsql_reset_stmt(s.stmt, nil)
 
 	// Bind parameters
 	for i, arg := range args {
@@ -176,12 +176,12 @@ func (s *Statement) Exec(args []driver.Value) (driver.Result, error) {
 		return nil, fmt.Errorf("execution failed: code %d", int(res))
 	}
 
-	return &Result{stmt: s.stmt}, nil
+	return &Result{stmt: s.stmt, conn: s.conn.conn}, nil
 }
 
 func (s *Statement) Query(args []driver.Value) (driver.Rows, error) {
 	// Reset statement
-	C.libsql_reset_stmt(s.stmt)
+	C.libsql_reset_stmt(s.stmt, nil)
 
 	// Bind parameters (same as Exec)
 	for i, arg := range args {
@@ -223,15 +223,16 @@ func (s *Statement) Query(args []driver.Value) (driver.Rows, error) {
 
 // Result implementation
 type Result struct {
-	stmt *C.libsql_stmt
+	stmt C.libsql_stmt_t
+	conn C.libsql_connection_t
 }
 
 func (r *Result) LastInsertId() (int64, error) {
-	return int64(C.libsql_last_insert_rowid(r.stmt)), nil
+	return int64(C.libsql_last_insert_rowid(r.conn)), nil
 }
 
 func (r *Result) RowsAffected() (int64, error) {
-	return int64(C.libsql_changes(r.stmt)), nil
+	return int64(C.libsql_changes(r.conn)), nil
 }
 
 // Rows implementation
