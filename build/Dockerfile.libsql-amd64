@@ -21,7 +21,7 @@ RUN git clone https://github.com/nalgeon/sqlean.git /tmp/sqlean && \
     cp -r /tmp/sqlean/src/text libsql/sqlean/text
 
 # Apply a small integration patch to register SQLean init functions in Rust bindings
-COPY build/libsql-sqlean-patch.diff /build/libsql-sqlean-patch.diff
+COPY libsql-sqlean-patch.diff /build/libsql-sqlean-patch.diff
 RUN cd libsql && git apply /build/libsql-sqlean-patch.diff || true
 
 # Build libsql C bindings as a static library
