@@ -1,0 +1,40 @@
+# LibSQL static build for linux/amd64 (pinned v0.9.23 - commit 7eed898)
+FROM rust:1.76-bullseye as builder
+
+RUN apt-get update && apt-get install -y build-essential clang llvm lld pkg-config git curl unzip cmake && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Pin libsql
+RUN git clone https://github.com/tursodatabase/libsql.git libsql && \
+    cd libsql && \
+    git fetch --all --tags && \
+    git checkout 7eed898
+
+# Vendor selected SQLean modules into build directory
+RUN git clone https://github.com/nalgeon/sqlean.git /tmp/sqlean && \
+    mkdir -p libsql/sqlean && \
+    cp -r /tmp/sqlean/src/crypto libsql/sqlean/crypto && \
+    cp -r /tmp/sqlean/src/fuzzy libsql/sqlean/fuzzy && \
+    cp -r /tmp/sqlean/src/math libsql/sqlean/math && \
+    cp -r /tmp/sqlean/src/stats libsql/sqlean/stats && \
+    cp -r /tmp/sqlean/src/text libsql/sqlean/text
+
+# Apply a small integration patch to register SQLean init functions in Rust bindings
+COPY build/libsql-sqlean-patch.diff /build/libsql-sqlean-patch.diff
+RUN cd libsql && git apply /build/libsql-sqlean-patch.diff || true
+
+# Build libsql C bindings as a static library
+RUN cd libsql && \
+    cd bindings/c && \
+    cargo build --release
+
+# Extract artifacts
+RUN mkdir -p /output && \
+    cp libsql/bindings/c/target/release/libsql_experimental.a /output/libsql-amd64.a || true && \
+    cp libsql/bindings/c/include/libsql.h /output/libsql.h || true && \
+    echo "commit=7eed898" > /output/build-info.txt && \
+    echo "features=fts5,json1,rtree,vector,sqlean(crypto,fuzzy,math,stats,text)" >> /output/build-info.txt
+
+FROM scratch
+COPY --from=builder /output/ /artifacts/
