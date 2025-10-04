@@ -6,7 +6,7 @@
 
 A high-performance, AI-enhanced virtual filesystem implementation in Go with **embedded LibSQL**, designed for modern file organization and management with advanced indexing, concurrent operations, and machine learning capabilities.
 
-> ![WARNING]
+> [!WARNING]
 > This repository is a WIP, use are your own risk. The project is in pre-alpha stages, the API is subject to change.
 > Check back frequently, the project is moving fast and will enter alpha hopefully soon.
 
