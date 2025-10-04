@@ -87,7 +87,7 @@ func (g *HarnessGenerator) StreamGenerate(ctx context.Context, req *GenerationRe
 			}
 		case err := <-errCh:
 			// For now, we can't easily return errors from the channel
-			// In a real implementation, we might want to use a different pattern
+			// FIXME: In a real implementation, we might want to use a different pattern
 			if err != nil {
 				// Log the error or handle it appropriately
 				fmt.Printf("Streaming error: %v\n", err)
@@ -159,14 +159,14 @@ func DefaultHarnessFactory() (*HarnessFactory, error) {
 	builder := harness.NewPromptBuilder()
 	assembler := harness.NewContextAssembler(
 		harness.Budget{MaxContextTokens: 4000, MaxSnippets: 10},
-		nil, // Use default token estimator
+		nil, // FIXME: Use default token estimator
 	)
 	store := &stubConversationStoreForBridge{} // Use stub for bridge to avoid DB dependency
 	cache := adapters.NewLRUCache(1000)
 	limiter := adapters.NewTokenBucket(100, 0)                      // No rate limiting for now
 	tracer := adapters.NewZerologTracer(zerolog.New(zerolog.Nop())) // Use no-op logger for bridge
 
-	// Create stub provider for compatibility
+	// FIXME: Create stub provider for compatibility
 	provider := &stubProviderForBridge{}
 
 	orchestrator := harness.NewHarnessOrchestrator(
@@ -183,11 +183,11 @@ func DefaultHarnessFactory() (*HarnessFactory, error) {
 }
 
 // stubProviderForBridge provides a minimal provider implementation for the bridge.
-// In a real implementation, this would use actual LLM providers.
+// FIXME: In a real implementation, this would use actual LLM providers.
 type stubProviderForBridge struct{}
 
 func (p *stubProviderForBridge) Complete(ctx context.Context, in ports.PromptInput, opts ports.Options) (ports.Completion, error) {
-	// This is a stub - in real usage, this would call an actual LLM provider
+	// FIXME: This is a stub - in real usage, this would call an actual LLM provider
 	return ports.Completion{
 		Text: "This is a bridge response - LLM provider not configured",
 		Usage: &ports.Usage{
