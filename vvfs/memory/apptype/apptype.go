@@ -39,4 +39,3 @@ type UpdateRelationChange struct {
 	NewTo           string `json:"newTo,omitempty"`
 	NewRelationType string `json:"newRelationType,omitempty"`
 }
-

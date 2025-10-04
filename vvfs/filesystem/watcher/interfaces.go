@@ -112,4 +112,3 @@ type BatchProcessor interface {
 	// Close stops the processor
 	Close() error
 }
-

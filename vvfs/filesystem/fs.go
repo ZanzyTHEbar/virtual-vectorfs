@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	internal "github.com/ZanzyTHEbar/virtual-vectorfs/vvfs"
 	"github.com/ZanzyTHEbar/virtual-vectorfs/vvfs/config"
 	"github.com/ZanzyTHEbar/virtual-vectorfs/vvfs/db"
 	"github.com/ZanzyTHEbar/virtual-vectorfs/vvfs/filesystem/common"
@@ -22,7 +23,7 @@ import (
 	ignore "github.com/sabhiram/go-gitignore"
 )
 
-// FileSystem is the main filesystem manager for the file4you application.
+// FileSystem is the main filesystem manager for the vvfs application.
 // It provides a modern, service-oriented interface for file organization and management.
 type FileSystem struct {
 	// Core services
@@ -40,7 +41,7 @@ type FileSystem struct {
 
 	// System components
 	workspaceManager *workspace.Manager
-	config           *config.File4YouConfig
+	config           *config.VVFSConfig
 	terminal         ports.Interactor
 
 	// Metadata
@@ -63,9 +64,9 @@ func New(interactor ports.Interactor, centralDB db.ICentralDBProvider) (*FileSys
 	}
 
 	// Determine cache directory
-	cacheDir := config.AppConfig.File4You.CacheDir
+	cacheDir := config.AppConfig.VVFS.CacheDir
 	if cacheDir == "" {
-		cacheDir = fmt.Sprintf("%s/.file4you/.cache", home)
+		cacheDir = internal.DefaultCacheDir
 	}
 
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
@@ -108,7 +109,7 @@ func New(interactor ports.Interactor, centralDB db.ICentralDBProvider) (*FileSys
 		depthUtils:          depthUtils,
 		safetyUtils:         safetyUtils,
 		workspaceManager:    workspaceManager,
-		config:              &config.AppConfig.File4You,
+		config:              &config.AppConfig.VVFS,
 		terminal:            interactor,
 		homeDir:             home,
 		cwd:                 cwd,
@@ -291,18 +292,18 @@ func (dfs *FileSystem) GetDirectoryTree() *trees.DirectoryTree {
 	return dfs.workspaceManager.GetCentralDB().GetDirectoryTree()
 }
 
-// GetDesktopCleanerIgnore loads ignore patterns for file organization
-func (dfs *FileSystem) GetDesktopCleanerIgnore(dir string) (services.IgnoreChecker, error) {
-	ignorePath := filepath.Join(dir, ".file4you-ignore")
+// GetFileSystemIgnore loads ignore patterns for file organization
+func (dfs *FileSystem) GetFileSystemIgnore(dir string) (services.IgnoreChecker, error) {
+	ignorePath := filepath.Join(dir, ".vvfs-ignore")
 
 	if _, err := os.Stat(ignorePath); err == nil {
 		ignored, err := ignore.CompileIgnoreFile(ignorePath)
 		if err != nil {
-			return nil, fmt.Errorf("error reading .file4you-ignore file: %w", err)
+			return nil, fmt.Errorf("error reading .vvfs-ignore file: %w", err)
 		}
 		return ignored, nil
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("error checking for .file4you-ignore file: %w", err)
+		return nil, fmt.Errorf("error checking for .vvfs-ignore file: %w", err)
 	}
 
 	return nil, nil
@@ -321,7 +322,7 @@ func (dfs *FileSystem) GetCwd() string {
 }
 
 // GetConfig returns the configuration
-func (dfs *FileSystem) GetConfig() *config.File4YouConfig {
+func (dfs *FileSystem) GetConfig() *config.VVFSConfig {
 	return dfs.config
 }
 
@@ -355,19 +356,4 @@ func (dfs *FileSystem) GetConflictResolver() interfaces.ConflictResolver {
 // OrganizeWithOptions organizes files using the new options system
 func (dfs *FileSystem) OrganizeWithOptions(ctx context.Context, opts options.OrganizationOptions) error {
 	return dfs.organizationService.OrganizeFiles(ctx, opts)
-}
-
-// Legacy compatibility methods - TODO: Remove after CLI migration
-
-// EnhancedOrganize provides legacy compatibility for the CLI organizer
-func (dfs *FileSystem) EnhancedOrganize(cfg *config.File4YouConfig, params *options.FilePathParams) error {
-	ctx := context.Background()
-	opts := params.ToOrganizationOptions()
-	opts.Config = cfg
-	return dfs.OrganizeWithOptions(ctx, opts)
-}
-
-// InstanceConfig returns the instance configuration for legacy compatibility
-func (dfs *FileSystem) InstanceConfig() *config.File4YouConfig {
-	return dfs.config
 }

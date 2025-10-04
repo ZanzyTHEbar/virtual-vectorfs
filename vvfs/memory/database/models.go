@@ -6,16 +6,8 @@ package database
 
 import (
 	"database/sql"
+	"time"
 )
-
-type Entity struct {
-	Name       string      `json:"name"`
-	EntityType string      `json:"entity_type"`
-	Embedding  interface{} `json:"embedding"`
-	Metadata   string      `json:"metadata"`
-	CreatedAt  int64       `json:"created_at"`
-	UpdatedAt  int64       `json:"updated_at"`
-}
 
 type EntityFileRelation struct {
 	ID              int64   `json:"id"`
@@ -28,26 +20,40 @@ type EntityFileRelation struct {
 	CreatedAt       int64   `json:"created_at"`
 }
 
-type File struct {
-	ID          string       `json:"id"`
-	WorkspaceID string       `json:"workspace_id"`
-	FilePath    string       `json:"file_path"`
-	Size        int64        `json:"size"`
-	ModTime     int64        `json:"mod_time"`
-	IsDir       sql.NullBool `json:"is_dir"`
-	Checksum    string       `json:"checksum"`
-	Embedding   interface{}  `json:"embedding"`
-	Metadata    string       `json:"metadata"`
-	CreatedAt   int64        `json:"created_at"`
-	UpdatedAt   int64        `json:"updated_at"`
+type GraphEdge struct {
+	ID             string       `json:"id"`
+	SrcID          string       `json:"src_id"`
+	DstID          string       `json:"dst_id"`
+	Rel            string       `json:"rel"`
+	AttrsJson      string       `json:"attrs_json"`
+	ValidFrom      time.Time    `json:"valid_from"`
+	ValidTo        sql.NullTime `json:"valid_to"`
+	IngestedAt     time.Time    `json:"ingested_at"`
+	InvalidatedAt  sql.NullTime `json:"invalidated_at"`
+	ProvenanceJson string       `json:"provenance_json"`
 }
 
-type Observation struct {
-	ID         int64       `json:"id"`
-	EntityName string      `json:"entity_name"`
-	Content    string      `json:"content"`
-	Embedding  interface{} `json:"embedding"`
-	CreatedAt  int64       `json:"created_at"`
+type GraphEdgesCurrent struct {
+	ID             string       `json:"id"`
+	SrcID          string       `json:"src_id"`
+	DstID          string       `json:"dst_id"`
+	Rel            string       `json:"rel"`
+	AttrsJson      string       `json:"attrs_json"`
+	ValidFrom      time.Time    `json:"valid_from"`
+	ValidTo        sql.NullTime `json:"valid_to"`
+	IngestedAt     time.Time    `json:"ingested_at"`
+	InvalidatedAt  sql.NullTime `json:"invalidated_at"`
+	ProvenanceJson string       `json:"provenance_json"`
+}
+
+type GraphEntity struct {
+	ID        string       `json:"id"`
+	Kind      string       `json:"kind"`
+	Name      string       `json:"name"`
+	Summary   string       `json:"summary"`
+	AttrsJson string       `json:"attrs_json"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	UpdatedAt sql.NullTime `json:"updated_at"`
 }
 
 type OperationHistory struct {
@@ -60,15 +66,6 @@ type OperationHistory struct {
 	Metadata      string `json:"metadata"`
 	PerformedBy   string `json:"performed_by"`
 	PerformedAt   int64  `json:"performed_at"`
-}
-
-type Snapshot struct {
-	ID             string `json:"id"`
-	WorkspaceID    string `json:"workspace_id"`
-	TakenAt        int64  `json:"taken_at"`
-	DirectoryState []byte `json:"directory_state"`
-	Description    string `json:"description"`
-	CreatedAt      int64  `json:"created_at"`
 }
 
 type Workspace struct {

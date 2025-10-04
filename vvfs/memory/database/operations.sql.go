@@ -154,8 +154,17 @@ type CreateSnapshotParams struct {
 	CreatedAt      int64  `json:"created_at"`
 }
 
+type CreateSnapshotRow struct {
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
+	TakenAt        int64  `json:"taken_at"`
+	DirectoryState []byte `json:"directory_state"`
+	Description    string `json:"description"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
 // Create a new snapshot for a workspace
-func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (Snapshot, error) {
+func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (CreateSnapshotRow, error) {
 	row := q.queryRow(ctx, q.createSnapshotStmt, createSnapshot,
 		arg.ID,
 		arg.WorkspaceID,
@@ -164,7 +173,7 @@ func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) 
 		arg.Description,
 		arg.CreatedAt,
 	)
-	var i Snapshot
+	var i CreateSnapshotRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -200,10 +209,19 @@ ORDER BY taken_at DESC
 LIMIT 1
 `
 
+type GetLatestSnapshotRow struct {
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
+	TakenAt        int64  `json:"taken_at"`
+	DirectoryState []byte `json:"directory_state"`
+	Description    string `json:"description"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
 // Get the most recent snapshot for a workspace
-func (q *Queries) GetLatestSnapshot(ctx context.Context, workspaceID string) (Snapshot, error) {
+func (q *Queries) GetLatestSnapshot(ctx context.Context, workspaceID string) (GetLatestSnapshotRow, error) {
 	row := q.queryRow(ctx, q.getLatestSnapshotStmt, getLatestSnapshot, workspaceID)
-	var i Snapshot
+	var i GetLatestSnapshotRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -570,10 +588,19 @@ FROM snapshots
 WHERE id = ?
 `
 
+type GetSnapshotRow struct {
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
+	TakenAt        int64  `json:"taken_at"`
+	DirectoryState []byte `json:"directory_state"`
+	Description    string `json:"description"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
 // Get snapshot by ID
-func (q *Queries) GetSnapshot(ctx context.Context, id string) (Snapshot, error) {
+func (q *Queries) GetSnapshot(ctx context.Context, id string) (GetSnapshotRow, error) {
 	row := q.queryRow(ctx, q.getSnapshotStmt, getSnapshot, id)
-	var i Snapshot
+	var i GetSnapshotRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -653,16 +680,25 @@ WHERE workspace_id = ?
 ORDER BY taken_at DESC
 `
 
+type GetWorkspaceSnapshotsRow struct {
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
+	TakenAt        int64  `json:"taken_at"`
+	DirectoryState []byte `json:"directory_state"`
+	Description    string `json:"description"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
 // Get all snapshots for a workspace
-func (q *Queries) GetWorkspaceSnapshots(ctx context.Context, workspaceID string) ([]Snapshot, error) {
+func (q *Queries) GetWorkspaceSnapshots(ctx context.Context, workspaceID string) ([]GetWorkspaceSnapshotsRow, error) {
 	rows, err := q.query(ctx, q.getWorkspaceSnapshotsStmt, getWorkspaceSnapshots, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Snapshot{}
+	items := []GetWorkspaceSnapshotsRow{}
 	for rows.Next() {
-		var i Snapshot
+		var i GetWorkspaceSnapshotsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,

@@ -44,7 +44,7 @@ func NewWatcherWithProcessor(config WatcherConfig, processor BatchProcessor) (Wa
 
 	// If the watcher supports setting a processor, set it
 	if fsWatcher, ok := watcher.(*FSNotifyWatcher); ok {
-		fsWatcher.processor = processor
+		fsWatcher.SetProcessor(processor)
 	}
 
 	return watcher, nil

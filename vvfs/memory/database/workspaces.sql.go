@@ -370,12 +370,12 @@ type GetWorkspaceTopFilesParams struct {
 }
 
 type GetWorkspaceTopFilesRow struct {
-	ID        string       `json:"id"`
-	FilePath  string       `json:"file_path"`
-	Size      int64        `json:"size"`
-	ModTime   int64        `json:"mod_time"`
-	IsDir     sql.NullBool `json:"is_dir"`
-	CreatedAt int64        `json:"created_at"`
+	ID        string `json:"id"`
+	FilePath  string `json:"file_path"`
+	Size      int64  `json:"size"`
+	ModTime   int64  `json:"mod_time"`
+	IsDir     int64  `json:"is_dir"`
+	CreatedAt int64  `json:"created_at"`
 }
 
 // Get largest files in workspace

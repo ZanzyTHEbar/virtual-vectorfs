@@ -447,20 +447,20 @@ type GetFilesForEntityTypeParams struct {
 }
 
 type GetFilesForEntityTypeRow struct {
-	ID              string       `json:"id"`
-	WorkspaceID     string       `json:"workspace_id"`
-	FilePath        string       `json:"file_path"`
-	Size            int64        `json:"size"`
-	ModTime         int64        `json:"mod_time"`
-	IsDir           sql.NullBool `json:"is_dir"`
-	Checksum        string       `json:"checksum"`
-	Embedding       interface{}  `json:"embedding"`
-	Metadata        string       `json:"metadata"`
-	CreatedAt       int64        `json:"created_at"`
-	UpdatedAt       int64        `json:"updated_at"`
-	RelationType    string       `json:"relation_type"`
-	Confidence      float64      `json:"confidence"`
-	SimilarityScore float64      `json:"similarity_score"`
+	ID              string      `json:"id"`
+	WorkspaceID     string      `json:"workspace_id"`
+	FilePath        string      `json:"file_path"`
+	Size            int64       `json:"size"`
+	ModTime         int64       `json:"mod_time"`
+	IsDir           int64       `json:"is_dir"`
+	Checksum        string      `json:"checksum"`
+	Embedding       interface{} `json:"embedding"`
+	Metadata        string      `json:"metadata"`
+	CreatedAt       int64       `json:"created_at"`
+	UpdatedAt       int64       `json:"updated_at"`
+	RelationType    string      `json:"relation_type"`
+	Confidence      float64     `json:"confidence"`
+	SimilarityScore float64     `json:"similarity_score"`
 }
 
 // Get files related to entities of specific type

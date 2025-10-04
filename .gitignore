@@ -1,1 +1,5 @@
 .cursor/
+workspace/
+bin/
+demo_data/
+extra/

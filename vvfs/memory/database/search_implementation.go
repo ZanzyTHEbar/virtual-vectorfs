@@ -128,6 +128,125 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 	return results[start:end], nil
 }
 
+// SearchHybrid performs hybrid text + vector search using Reciprocal Rank Fusion (RRF)
+func (dm *DBManager) SearchHybrid(ctx context.Context, projectName string, textQuery string, vectorQuery []float32, limit, offset int, textWeight, vectorWeight float64, rrfK int) ([]apptype.SearchResult, error) {
+	if textQuery == "" && len(vectorQuery) == 0 {
+		return nil, fmt.Errorf("both text and vector queries cannot be empty")
+	}
+
+	// Default weights if not specified
+	if textWeight == 0 {
+		textWeight = 0.5
+	}
+	if vectorWeight == 0 {
+		vectorWeight = 0.5
+	}
+	if rrfK == 0 {
+		rrfK = 60 // Standard RRF K value
+	}
+
+	// Perform both searches
+	var textResults []apptype.SearchResult
+	var vectorResults []apptype.SearchResult
+
+	// Text search
+	if textQuery != "" {
+		ents, _, err := dm.SearchEntities(ctx, projectName, textQuery, limit*2, 0) // Get more results for better fusion
+		if err != nil {
+			return nil, fmt.Errorf("text search failed: %w", err)
+		}
+		for i, ent := range ents {
+			textResults = append(textResults, apptype.SearchResult{
+				Entity:   ent,
+				Distance: float64(i + 1), // Use rank as distance for RRF
+			})
+		}
+	}
+
+	// Vector search
+	if len(vectorQuery) > 0 {
+		vecResults, err := dm.SearchSimilar(ctx, projectName, vectorQuery, limit*2, 0)
+		if err != nil {
+			return nil, fmt.Errorf("vector search failed: %w", err)
+		}
+		vectorResults = vecResults
+	}
+
+	// Combine results using RRF
+	return dm.fuseResultsWithRRF(textResults, vectorResults, textWeight, vectorWeight, rrfK, limit, offset)
+}
+
+// fuseResultsWithRRF implements Reciprocal Rank Fusion algorithm
+func (dm *DBManager) fuseResultsWithRRF(textResults, vectorResults []apptype.SearchResult, textWeight, vectorWeight float64, rrfK int, limit, offset int) ([]apptype.SearchResult, error) {
+	// Create a map to track entities and their RRF scores
+	entityScores := make(map[string]*apptype.SearchResult)
+	entityRanks := make(map[string]map[string]int) // entity -> search_type -> rank
+
+	// Process text results
+	for i, result := range textResults {
+		if _, exists := entityScores[result.Entity.Name]; !exists {
+			entityScores[result.Entity.Name] = &apptype.SearchResult{
+				Entity:   result.Entity,
+				Distance: 0.0,
+			}
+			entityRanks[result.Entity.Name] = make(map[string]int)
+		}
+		entityRanks[result.Entity.Name]["text"] = i + 1
+	}
+
+	// Process vector results
+	for i, result := range vectorResults {
+		if _, exists := entityScores[result.Entity.Name]; !exists {
+			entityScores[result.Entity.Name] = &apptype.SearchResult{
+				Entity:   result.Entity,
+				Distance: 0.0,
+			}
+			entityRanks[result.Entity.Name] = make(map[string]int)
+		}
+		entityRanks[result.Entity.Name]["vector"] = i + 1
+	}
+
+	// Calculate RRF scores
+	for entityName, result := range entityScores {
+		ranks := entityRanks[entityName]
+		score := 0.0
+
+		// Text score contribution
+		if textRank, hasText := ranks["text"]; hasText {
+			score += textWeight * (1.0 / float64(rrfK+textRank))
+		}
+
+		// Vector score contribution
+		if vectorRank, hasVector := ranks["vector"]; hasVector {
+			score += vectorWeight * (1.0 / float64(rrfK+vectorRank))
+		}
+
+		result.Distance = -score // Use negative score for sorting (higher score = better)
+	}
+
+	// Convert map to slice and sort by score (descending)
+	var results []apptype.SearchResult
+	for _, result := range entityScores {
+		results = append(results, *result)
+	}
+
+	sort.SliceStable(results, func(i, j int) bool {
+		return results[i].Distance < results[j].Distance // Lower distance (higher negative score) = better
+	})
+
+	// Apply pagination
+	start := offset
+	end := start + limit
+	if start > len(results) {
+		start = len(results)
+	}
+	if end > len(results) {
+		end = len(results)
+	}
+
+	return results[start:end], nil
+}
+
 // ensureFTSSchema creates FTS5 virtual table and triggers if supported (best-effort)
 func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
 	stmts := []string{

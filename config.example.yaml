@@ -1,0 +1,52 @@
+# Virtual VectorFS Configuration Example
+# Copy this file to config.yaml and modify as needed
+
+# vvfs application settings
+vvfs:
+  featureFlags:
+    advancedSearch: true
+    vectorSearch: true
+    fuzzySearch: true
+  targetDir: "."
+  cacheDir: "./cache"
+  database:
+    # Legacy settings (for backward compatibility)
+    dsn: "./data/virtual-vectorfs.db"
+    type: "libsql"
+    # Embedded LibSQL configuration
+    libsql_data_dir: "./data/libsql" # Directory for database files
+  organizeTimeoutMinutes: 10
+
+# Embedding model configuration
+embedding:
+  provider: "hugot"
+  model_path: "google/gemma-3-1b"
+  dims: 768
+  pooling: "mean"
+  batch_size: 32
+
+# LLM configuration
+llm:
+  provider: "hugot"
+  model_path: "onnx-community/gemma-3-270m-it-ONNX"
+  max_new_tokens: 512
+  temperature: 0.3
+  top_p: 0.9
+  min_p: 0.15
+  repetition_penalty: 1.05
+
+# ONNX runtime configuration
+onnx:
+  backend: "ort"
+  ep: "cpu"
+  inter_op_threads: 1
+  intra_op_threads: 1
+  cpu_mem_arena: false
+  mem_pattern: false
+# Configuration Notes:
+#
+# Embedded-only LibSQL:
+# - Single-binary; no server processes
+# - FTS5 and JSON1 built-in
+# - Vector functions depend on static build flags
+# - No runtime load_extension is attempted

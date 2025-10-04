@@ -99,7 +99,7 @@ const (
 type OrganizationOptions struct {
 	SourceDir          string                   // Source directory to organize
 	TargetDir          string                   // Target directory for organized files
-	Config             *config.File4YouConfig   // Configuration for organization rules
+	Config             *config.VVFSConfig       // Configuration for organization rules
 	DryRun             bool                     // Preview operations without executing
 	ConflictResolution ConflictStrategy         // How to handle file conflicts
 	CopyInsteadOfMove  bool                     // Copy instead of move

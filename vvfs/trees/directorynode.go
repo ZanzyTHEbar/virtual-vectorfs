@@ -3,6 +3,7 @@ package trees
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,9 +38,28 @@ type directoryNodeJSON struct {
 	Metadata    Metadata `json:"metadata"`
 }
 
-var tempRelationshipMap = make(map[string]*directoryNodeJSON)
+var tempRelationshipMap map[string]*directoryNodeJSON
 
-// NewDirectoryNode creates a new DirectoryNode
+// initTempRelationshipMap ensures tempRelationshipMap is initialized
+func initTempRelationshipMap() {
+	if tempRelationshipMap == nil {
+		tempRelationshipMap = make(map[string]*directoryNodeJSON)
+	}
+}
+
+// clearTempRelationshipMap safely clears the tempRelationshipMap to prevent memory leaks
+func clearTempRelationshipMap() {
+	if tempRelationshipMap != nil {
+		// Clear all entries to break circular references
+		for k := range tempRelationshipMap {
+			delete(tempRelationshipMap, k)
+		}
+		// Set to nil to allow full garbage collection
+		tempRelationshipMap = nil
+	}
+}
+
+// NewDirectoryNode creates a new DirectoryNode with consistent path normalization
 func NewDirectoryNode(path string, parent *DirectoryNode) *DirectoryNode {
 	var nodeType NodeType
 	if parent == nil {
@@ -48,10 +68,13 @@ func NewDirectoryNode(path string, parent *DirectoryNode) *DirectoryNode {
 		nodeType = parent.Type
 	}
 
+	// Ensure path is consistently normalized
+	normalizedPath := normalizePath(path)
+
 	now := time.Now()
 	return &DirectoryNode{
 		ID:       uuid.NewString(),
-		Path:     path,
+		Path:     normalizedPath,
 		Type:     nodeType,
 		Parent:   parent,
 		Children: []*DirectoryNode{},
@@ -86,6 +109,23 @@ func (directorynode *DirectoryNode) AddFile(file *FileNode) *DirectoryNode {
 
 func (directorynode *DirectoryNode) String() string {
 	return directorynode.Path
+}
+
+// TreeNode interface implementation
+func (directorynode *DirectoryNode) GetPath() string {
+	return directorynode.Path
+}
+
+func (directorynode *DirectoryNode) GetName() string {
+	return filepath.Base(directorynode.Path)
+}
+
+func (directorynode *DirectoryNode) GetMetadata() *Metadata {
+	return &directorynode.Metadata
+}
+
+func (directorynode *DirectoryNode) IsDirectory() bool {
+	return directorynode.Type == Directory
 }
 
 func (directorynode *DirectoryNode) IsRoot() bool {
@@ -149,6 +189,8 @@ func (directorynode *DirectoryNode) UnMarshalJSON(data []byte) error {
 	directorynode.Type = aux.Type
 	directorynode.Metadata = aux.Metadata
 
+	// Ensure tempRelationshipMap is initialized before use
+	initTempRelationshipMap()
 	tempRelationshipMap[directorynode.ID] = &aux
 
 	return nil
@@ -156,6 +198,9 @@ func (directorynode *DirectoryNode) UnMarshalJSON(data []byte) error {
 
 // RebuildGraph builds relationships between nodes based on parent and children IDs
 func RebuildGraph(nodes []*DirectoryNode) {
+	// Ensure tempRelationshipMap is initialized to prevent nil dereference
+	initTempRelationshipMap()
+
 	nodeMap := make(map[string]*DirectoryNode)
 	for _, node := range nodes {
 		nodeMap[node.ID] = node
@@ -179,6 +224,6 @@ func RebuildGraph(nodes []*DirectoryNode) {
 		}
 	}
 
-	// Clear the temporary map to free memory while keeping a valid map instance
-	tempRelationshipMap = make(map[string]*directoryNodeJSON)
+	// Clear the temporary map to free memory and break circular references
+	clearTempRelationshipMap()
 }

@@ -16,7 +16,7 @@ import (
 // TestCentralDBProviderIntegration tests the actual CentralDBProvider implementation
 func TestCentralDBProviderIntegration(t *testing.T) {
 	// Create a temporary directory for test database
-	tempDir, err := os.MkdirTemp("", "file4you_test_central_db_*")
+	tempDir, err := os.MkdirTemp("", "vvfs_test_central_db_*")
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
@@ -185,7 +185,7 @@ func TestCentralDBProviderIntegration(t *testing.T) {
 // TestWorkspaceDBIntegration tests the WorkspaceDB implementation
 func TestWorkspaceDBIntegration(t *testing.T) {
 	// Create a temporary directory for test workspace
-	tempDir, err := os.MkdirTemp("", "file4you_test_workspace_db_*")
+	tempDir, err := os.MkdirTemp("", "vvfs_test_workspace_db_*")
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 

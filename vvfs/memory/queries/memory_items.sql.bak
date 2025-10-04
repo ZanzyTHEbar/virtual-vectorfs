@@ -1,0 +1,88 @@
+-- SQLC queries for memory_items table
+-- These queries will be generated into Go code for type-safe database operations
+
+-- name: GetMemoryItem :one
+SELECT id, type, text, metadata_json, embedding, created_at, expires_at, source_ref
+FROM memory_items
+WHERE id = ?;
+
+-- name: ListMemoryItems :many
+SELECT id, type, text, metadata_json, embedding, created_at, expires_at, source_ref
+FROM memory_items
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: CreateMemoryItem :one
+INSERT INTO memory_items (id, type, text, metadata_json, embedding, created_at, expires_at, source_ref)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, type, text, metadata_json, embedding, created_at, expires_at, source_ref;
+
+-- name: UpdateMemoryItem :one
+UPDATE memory_items
+SET type = ?, text = ?, metadata_json = ?, embedding = ?, expires_at = ?, source_ref = ?
+WHERE id = ?
+RETURNING id, type, text, metadata_json, embedding, created_at, expires_at, source_ref;
+
+-- name: DeleteMemoryItem :exec
+DELETE FROM memory_items WHERE id = ?;
+
+-- name: GetMemoryItemsByType :many
+SELECT id, type, text, metadata_json, embedding, created_at, expires_at, source_ref
+FROM memory_items
+WHERE type = ?
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: GetMemoryItemsBySource :many
+SELECT id, type, text, metadata_json, embedding, created_at, expires_at, source_ref
+FROM memory_items
+WHERE source_ref = ?
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: GetExpiredMemoryItems :many
+SELECT id, type, text, metadata_json, embedding, created_at, expires_at, source_ref
+FROM memory_items
+WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP;
+
+-- name: DeleteExpiredMemoryItems :exec
+DELETE FROM memory_items
+WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP;
+
+-- name: SearchMemoryItemsFTS :many
+SELECT mi.id, mi.type, mi.text, mi.metadata_json, mi.embedding, mi.created_at, mi.expires_at, mi.source_ref,
+       highlight(memory_items_fts, 0, '<mark>', '</mark>') as highlighted_text,
+       bm25(memory_items_fts) as bm25_score
+FROM memory_items_fts
+JOIN memory_items mi ON memory_items_fts.rowid = mi.rowid
+WHERE memory_items_fts MATCH ?
+ORDER BY bm25(memory_items_fts) DESC
+LIMIT ? OFFSET ?;
+
+-- name: CountMemoryItems :one
+SELECT COUNT(*) FROM memory_items;
+
+-- name: CountMemoryItemsByType :one
+SELECT COUNT(*) FROM memory_items WHERE type = ?;
+
+-- name: GetMemoryItemMetadata :one
+SELECT metadata_json FROM memory_items WHERE id = ?;
+
+-- name: UpdateMemoryItemMetadata :exec
+UPDATE memory_items
+SET metadata_json = ?
+WHERE id = ?;
+
+-- name: GetMemoryItemsWithEmbeddings :many
+SELECT id, type, text, metadata_json, embedding, created_at, expires_at, source_ref
+FROM memory_items
+WHERE embedding IS NOT NULL
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: GetMemoryItemsWithoutEmbeddings :many
+SELECT id, type, text, metadata_json, embedding, created_at, expires_at, source_ref
+FROM memory_items
+WHERE embedding IS NULL
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;

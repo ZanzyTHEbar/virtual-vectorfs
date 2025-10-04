@@ -219,4 +219,3 @@ func ExampleFingerprinting() {
 		fmt.Println("Files are very similar")
 	}
 }
-

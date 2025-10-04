@@ -19,7 +19,7 @@ import (
 // TestServiceIntegrationEndToEnd validates that all enhanced packages work together
 func TestServiceIntegrationEndToEnd(t *testing.T) {
 	// Create temporary test directory structure
-	tempDir, err := os.MkdirTemp("", "file4you_integration_test_*")
+	tempDir, err := os.MkdirTemp("", "vvfs_integration_test_*")
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
@@ -161,7 +161,7 @@ func TestServiceIntegrationEndToEnd(t *testing.T) {
 
 	t.Run("PerformanceValidation", func(t *testing.T) {
 		// Create a larger test structure for performance validation
-		perfTestDir, err := os.MkdirTemp("", "file4you_perf_test_*")
+		perfTestDir, err := os.MkdirTemp("", "vvfs_perf_test_*")
 		require.NoError(t, err)
 		defer os.RemoveAll(perfTestDir)
 

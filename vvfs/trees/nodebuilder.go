@@ -59,10 +59,28 @@ func (b *NodeBuilder[T]) Build() (T, error) {
 			b.err = fmt.Errorf("path must be set before building the node")
 			return b.node, b.err
 		}
-		// TODO: Assuming T is *DirectoryNode. For other types, additional handling might be needed.
-		node := NewDirectoryNode(b.path, nil)
-		node.Metadata = *b.metadata
-		b.node = any(node).(T)
+
+		// Handle different TreeNode types properly
+		var node TreeNode
+		switch any(b.node).(type) {
+		case *DirectoryNode:
+			dirNode := NewDirectoryNode(b.path, nil)
+			dirNode.Metadata = *b.metadata
+			node = dirNode
+		default:
+			// For other TreeNode types, we would need type-specific constructors
+			// For now, return an error indicating unsupported type
+			b.err = fmt.Errorf("unsupported TreeNode type: %T", b.node)
+			return b.node, b.err
+		}
+
+		// Type assertion to ensure compatibility
+		if typedNode, ok := node.(T); ok {
+			b.node = typedNode
+		} else {
+			b.err = fmt.Errorf("type assertion failed for TreeNode type")
+			return b.node, b.err
+		}
 	}
 	return b.node, nil
 }

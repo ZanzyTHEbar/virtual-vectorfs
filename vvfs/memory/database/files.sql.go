@@ -28,17 +28,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type BatchCreateFilesParams struct {
-	ID          string       `json:"id"`
-	WorkspaceID string       `json:"workspace_id"`
-	FilePath    string       `json:"file_path"`
-	Size        int64        `json:"size"`
-	ModTime     int64        `json:"mod_time"`
-	IsDir       sql.NullBool `json:"is_dir"`
-	Checksum    string       `json:"checksum"`
-	Embedding   interface{}  `json:"embedding"`
-	Metadata    string       `json:"metadata"`
-	CreatedAt   int64        `json:"created_at"`
-	UpdatedAt   int64        `json:"updated_at"`
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
 }
 
 // Batch insert multiple files
@@ -160,21 +160,35 @@ RETURNING id,
 `
 
 type CreateFileParams struct {
-	ID          string       `json:"id"`
-	WorkspaceID string       `json:"workspace_id"`
-	FilePath    string       `json:"file_path"`
-	Size        int64        `json:"size"`
-	ModTime     int64        `json:"mod_time"`
-	IsDir       sql.NullBool `json:"is_dir"`
-	Checksum    string       `json:"checksum"`
-	Embedding   interface{}  `json:"embedding"`
-	Metadata    string       `json:"metadata"`
-	CreatedAt   int64        `json:"created_at"`
-	UpdatedAt   int64        `json:"updated_at"`
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
+type CreateFileRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
 }
 
 // Create a new file with upsert semantics
-func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, error) {
+func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (CreateFileRow, error) {
 	row := q.queryRow(ctx, q.createFileStmt, createFile,
 		arg.ID,
 		arg.WorkspaceID,
@@ -188,7 +202,7 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
-	var i File
+	var i CreateFileRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -232,10 +246,24 @@ FROM files
 WHERE id = ?
 `
 
+type GetFileRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
 // Get file by ID
-func (q *Queries) GetFile(ctx context.Context, id string) (File, error) {
+func (q *Queries) GetFile(ctx context.Context, id string) (GetFileRow, error) {
 	row := q.queryRow(ctx, q.getFileStmt, getFile, id)
-	var i File
+	var i GetFileRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -274,10 +302,24 @@ type GetFileByPathParams struct {
 	FilePath    string `json:"file_path"`
 }
 
-// Get file by workspace and path
-func (q *Queries) GetFileByPath(ctx context.Context, arg GetFileByPathParams) (File, error) {
+type GetFileByPathRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
+// Get a file by workspace and exact path
+func (q *Queries) GetFileByPath(ctx context.Context, arg GetFileByPathParams) (GetFileByPathRow, error) {
 	row := q.queryRow(ctx, q.getFileByPathStmt, getFileByPath, arg.WorkspaceID, arg.FilePath)
-	var i File
+	var i GetFileByPathRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -372,16 +414,30 @@ type GetFilesBySizeRangeParams struct {
 	Offset      int64  `json:"offset"`
 }
 
+type GetFilesBySizeRangeRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
 // Get files within a size range
-func (q *Queries) GetFilesBySizeRange(ctx context.Context, arg GetFilesBySizeRangeParams) ([]File, error) {
+func (q *Queries) GetFilesBySizeRange(ctx context.Context, arg GetFilesBySizeRangeParams) ([]GetFilesBySizeRangeRow, error) {
 	rows, err := q.query(ctx, q.getFilesBySizeRangeStmt, getFilesBySizeRange, arg.WorkspaceID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []File{}
+	items := []GetFilesBySizeRangeRow{}
 	for rows.Next() {
-		var i File
+		var i GetFilesBySizeRangeRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -433,16 +489,30 @@ type GetFilesWithEmbeddingsParams struct {
 	Offset      int64  `json:"offset"`
 }
 
+type GetFilesWithEmbeddingsRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
 // Get files that have embeddings (for semantic search)
-func (q *Queries) GetFilesWithEmbeddings(ctx context.Context, arg GetFilesWithEmbeddingsParams) ([]File, error) {
+func (q *Queries) GetFilesWithEmbeddings(ctx context.Context, arg GetFilesWithEmbeddingsParams) ([]GetFilesWithEmbeddingsRow, error) {
 	rows, err := q.query(ctx, q.getFilesWithEmbeddingsStmt, getFilesWithEmbeddings, arg.WorkspaceID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []File{}
+	items := []GetFilesWithEmbeddingsRow{}
 	for rows.Next() {
-		var i File
+		var i GetFilesWithEmbeddingsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -495,16 +565,16 @@ type GetFilesWithoutEmbeddingsParams struct {
 }
 
 type GetFilesWithoutEmbeddingsRow struct {
-	ID          string       `json:"id"`
-	WorkspaceID string       `json:"workspace_id"`
-	FilePath    string       `json:"file_path"`
-	Size        int64        `json:"size"`
-	ModTime     int64        `json:"mod_time"`
-	IsDir       sql.NullBool `json:"is_dir"`
-	Checksum    string       `json:"checksum"`
-	Metadata    string       `json:"metadata"`
-	CreatedAt   int64        `json:"created_at"`
-	UpdatedAt   int64        `json:"updated_at"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	FilePath    string `json:"file_path"`
+	Size        int64  `json:"size"`
+	ModTime     int64  `json:"mod_time"`
+	IsDir       int64  `json:"is_dir"`
+	Checksum    string `json:"checksum"`
+	Metadata    string `json:"metadata"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
 }
 
 // Get files that need embedding generation
@@ -568,8 +638,22 @@ type GetRecentlyModifiedFilesParams struct {
 	Offset      int64  `json:"offset"`
 }
 
+type GetRecentlyModifiedFilesRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
 // Get files modified within a time range
-func (q *Queries) GetRecentlyModifiedFiles(ctx context.Context, arg GetRecentlyModifiedFilesParams) ([]File, error) {
+func (q *Queries) GetRecentlyModifiedFiles(ctx context.Context, arg GetRecentlyModifiedFilesParams) ([]GetRecentlyModifiedFilesRow, error) {
 	rows, err := q.query(ctx, q.getRecentlyModifiedFilesStmt, getRecentlyModifiedFiles,
 		arg.WorkspaceID,
 		arg.ModTime,
@@ -580,9 +664,9 @@ func (q *Queries) GetRecentlyModifiedFiles(ctx context.Context, arg GetRecentlyM
 		return nil, err
 	}
 	defer rows.Close()
-	items := []File{}
+	items := []GetRecentlyModifiedFilesRow{}
 	for rows.Next() {
-		var i File
+		var i GetRecentlyModifiedFilesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -624,7 +708,7 @@ SELECT id,
 FROM files
 WHERE workspace_id = ?
     AND file_path LIKE ? || '/%'
-ORDER BY file_path
+ORDER BY file_path ASC
 `
 
 type ListFilesByDirectoryParams struct {
@@ -632,16 +716,30 @@ type ListFilesByDirectoryParams struct {
 	Column2     sql.NullString `json:"column_2"`
 }
 
-// List files in a specific directory path
-func (q *Queries) ListFilesByDirectory(ctx context.Context, arg ListFilesByDirectoryParams) ([]File, error) {
+type ListFilesByDirectoryRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
+// List files whose path has a given directory prefix
+func (q *Queries) ListFilesByDirectory(ctx context.Context, arg ListFilesByDirectoryParams) ([]ListFilesByDirectoryRow, error) {
 	rows, err := q.query(ctx, q.listFilesByDirectoryStmt, listFilesByDirectory, arg.WorkspaceID, arg.Column2)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []File{}
+	items := []ListFilesByDirectoryRow{}
 	for rows.Next() {
-		var i File
+		var i ListFilesByDirectoryRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -692,16 +790,30 @@ type ListFilesByWorkspaceParams struct {
 	Offset      int64  `json:"offset"`
 }
 
+type ListFilesByWorkspaceRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
 // List all files in a workspace with pagination
-func (q *Queries) ListFilesByWorkspace(ctx context.Context, arg ListFilesByWorkspaceParams) ([]File, error) {
+func (q *Queries) ListFilesByWorkspace(ctx context.Context, arg ListFilesByWorkspaceParams) ([]ListFilesByWorkspaceRow, error) {
 	rows, err := q.query(ctx, q.listFilesByWorkspaceStmt, listFilesByWorkspace, arg.WorkspaceID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []File{}
+	items := []ListFilesByWorkspaceRow{}
 	for rows.Next() {
-		var i File
+		var i ListFilesByWorkspaceRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -758,8 +870,22 @@ type SearchFilesParams struct {
 	Offset      int64          `json:"offset"`
 }
 
+type SearchFilesRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
 // Search files by path or metadata content
-func (q *Queries) SearchFiles(ctx context.Context, arg SearchFilesParams) ([]File, error) {
+func (q *Queries) SearchFiles(ctx context.Context, arg SearchFilesParams) ([]SearchFilesRow, error) {
 	rows, err := q.query(ctx, q.searchFilesStmt, searchFiles,
 		arg.WorkspaceID,
 		arg.Column2,
@@ -771,9 +897,9 @@ func (q *Queries) SearchFiles(ctx context.Context, arg SearchFilesParams) ([]Fil
 		return nil, err
 	}
 	defer rows.Close()
-	items := []File{}
+	items := []SearchFilesRow{}
 	for rows.Next() {
-		var i File
+		var i SearchFilesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -832,8 +958,22 @@ type UpdateFileParams struct {
 	ID        string      `json:"id"`
 }
 
+type UpdateFileRow struct {
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	FilePath    string      `json:"file_path"`
+	Size        int64       `json:"size"`
+	ModTime     int64       `json:"mod_time"`
+	IsDir       int64       `json:"is_dir"`
+	Checksum    string      `json:"checksum"`
+	Embedding   interface{} `json:"embedding"`
+	Metadata    string      `json:"metadata"`
+	CreatedAt   int64       `json:"created_at"`
+	UpdatedAt   int64       `json:"updated_at"`
+}
+
 // Update file metadata
-func (q *Queries) UpdateFile(ctx context.Context, arg UpdateFileParams) (File, error) {
+func (q *Queries) UpdateFile(ctx context.Context, arg UpdateFileParams) (UpdateFileRow, error) {
 	row := q.queryRow(ctx, q.updateFileStmt, updateFile,
 		arg.Size,
 		arg.ModTime,
@@ -843,7 +983,7 @@ func (q *Queries) UpdateFile(ctx context.Context, arg UpdateFileParams) (File, e
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	var i File
+	var i UpdateFileRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,

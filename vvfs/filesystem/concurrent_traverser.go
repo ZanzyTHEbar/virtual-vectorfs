@@ -129,11 +129,20 @@ func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool
 		var nextLevelMu sync.Mutex
 
 		// Create a new pool context for this level to avoid reusing closed pools
-		levelPool := pool.New().WithMaxGoroutines(ct.maxWorkers).WithContext(ct.ctx)
+		// levelPool := pool.New().WithMaxGoroutines(ct.maxWorkers).WithContext(ct.ctx)
 
-		// Process all directories at the current level concurrently
+		// Use the shared pool to enforce bounded concurrency and a per-level
+		// waitgroup so we only wait for the tasks we submitted for this level.
+		var wg sync.WaitGroup
+
+		// Process all directories at the current level concurrently via ct.pool
 		for _, dirNode := range currentLevel {
-			levelPool.Go(func(ctx context.Context) error {
+			wg.Add(1)
+
+			// Submit task to shared pool; pool limits actual goroutines to ct.maxWorkers
+			ct.pool.Go(func(ctx context.Context) error {
+				defer wg.Done()
+
 				result := ct.processDirectoryNode(ctx, dirNode, depth, maxDepth, handler)
 
 				// Update statistics atomically
@@ -159,7 +168,7 @@ func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool
 		}
 
 		// Wait for all directories at this level to be processed
-		levelPool.Wait()
+		wg.Wait()
 
 		// Move to the next level
 		currentLevel = nextLevel

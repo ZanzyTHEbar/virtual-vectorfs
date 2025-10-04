@@ -48,7 +48,7 @@ SELECT id,
 FROM files
 WHERE id = ?;
 -- name: GetFileByPath :one
--- Get file by workspace and path
+-- Get a file by workspace and exact path
 SELECT id,
     workspace_id,
     file_path,
@@ -106,7 +106,7 @@ WHERE workspace_id = ?
 ORDER BY file_path
 LIMIT ? OFFSET ?;
 -- name: ListFilesByDirectory :many
--- List files in a specific directory path
+-- List files whose path has a given directory prefix
 SELECT id,
     workspace_id,
     file_path,
@@ -121,7 +121,7 @@ SELECT id,
 FROM files
 WHERE workspace_id = ?
     AND file_path LIKE ? || '/%'
-ORDER BY file_path;
+ORDER BY file_path ASC;
 -- name: SearchFiles :many
 -- Search files by path or metadata content
 SELECT id,

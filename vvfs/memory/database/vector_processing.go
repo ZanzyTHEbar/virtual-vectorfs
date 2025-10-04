@@ -7,19 +7,24 @@ import (
 	"math"
 	"reflect"
 	"strconv"
-	"strings"
 )
 
-// vectorZeroString builds a zero vector string for current embedding dims
+// vectorZeroString builds a zero vector string for current embedding dims (compact, no spaces)
 func (dm *DBManager) vectorZeroString() string {
-	if dm.config.EmbeddingDims <= 0 {
-		return "[0.0, 0.0, 0.0, 0.0]"
+	dims := dm.config.EmbeddingDims
+	if dims <= 0 {
+		dims = 4
 	}
-	parts := make([]string, dm.config.EmbeddingDims)
-	for i := range parts {
-		parts[i] = "0.0"
+	buf := make([]byte, 0, 2+(dims*2))
+	buf = append(buf, '[')
+	for i := 0; i < dims; i++ {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = strconv.AppendFloat(buf, 0, 'f', -1, 32)
 	}
-	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // vectorToString converts a float32 array to libSQL vector string format (vector32)
@@ -34,19 +39,20 @@ func (dm *DBManager) vectorToString(numbers []float32) (string, error) {
 	if len(numbers) != dims {
 		return "", fmt.Errorf("vector must have exactly %d dimensions, got %d", dims, len(numbers))
 	}
-	sanitized := make([]float32, len(numbers))
-	for i, n := range numbers {
-		if math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) {
-			sanitized[i] = 0.0
-		} else {
-			sanitized[i] = n
+	buf := make([]byte, 0, 2+(dims*8))
+	buf = append(buf, '[')
+	for i := 0; i < dims; i++ {
+		if i > 0 {
+			buf = append(buf, ',')
 		}
+		n := numbers[i]
+		if math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) {
+			n = 0
+		}
+		buf = strconv.AppendFloat(buf, float64(n), 'f', -1, 32)
 	}
-	out := make([]string, len(sanitized))
-	for i, n := range sanitized {
-		out[i] = fmt.Sprintf("%f", n)
-	}
-	return fmt.Sprintf("[%s]", strings.Join(out, ", ")), nil
+	buf = append(buf, ']')
+	return string(buf), nil
 }
 
 // ExtractVector reads F32_BLOB bytes into []float32

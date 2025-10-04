@@ -9,8 +9,6 @@ import (
 )
 
 type Querier interface {
-	// Batch insert multiple entities
-	BatchCreateEntities(ctx context.Context, arg BatchCreateEntitiesParams) error
 	// Batch create multiple entity-file relationships
 	BatchCreateEntityFileRelations(ctx context.Context, arg BatchCreateEntityFileRelationsParams) error
 	// Batch insert multiple files
@@ -21,14 +19,10 @@ type Querier interface {
 	BatchCreateOperations(ctx context.Context, arg BatchCreateOperationsParams) error
 	// Batch create multiple workspaces
 	BatchCreateWorkspaces(ctx context.Context, arg BatchCreateWorkspacesParams) error
-	// Batch delete multiple entities
-	BatchDeleteEntities(ctx context.Context, name string) error
 	// Batch delete multiple files
 	BatchDeleteFiles(ctx context.Context, id string) error
 	// Batch delete multiple observations
 	BatchDeleteObservations(ctx context.Context, id int64) error
-	// Batch update multiple entities
-	BatchUpdateEntities(ctx context.Context, arg BatchUpdateEntitiesParams) error
 	// Batch update multiple files
 	BatchUpdateFiles(ctx context.Context, arg BatchUpdateFilesParams) error
 	// Batch update multiple observations
@@ -43,86 +37,105 @@ type Querier interface {
 	CleanupLowConfidenceRelations(ctx context.Context, confidence float64) error
 	// Remove operations older than specified date
 	CleanupOldOperations(ctx context.Context, performedAt int64) error
-	// Create a new entity with upsert semantics
-	CreateEntity(ctx context.Context, arg CreateEntityParams) (Entity, error)
+	CountGraphEntities(ctx context.Context) (int64, error)
+	CountGraphEntitiesByKind(ctx context.Context, kind string) (int64, error)
+	CountGraphGraphEdges(ctx context.Context) (int64, error)
+	CountGraphGraphEdgesByRelation(ctx context.Context, rel string) (int64, error)
+	CountGraphGraphEdgesBySource(ctx context.Context, srcID string) (int64, error)
+	CountGraphGraphEdgesByTarget(ctx context.Context, dstID string) (int64, error)
 	// Create a relationship between entity and file
 	CreateEntityFileRelation(ctx context.Context, arg CreateEntityFileRelationParams) (EntityFileRelation, error)
 	// Create a new file with upsert semantics
-	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
+	CreateFile(ctx context.Context, arg CreateFileParams) (CreateFileRow, error)
+	CreateGraphEntity(ctx context.Context, arg CreateGraphEntityParams) (GraphEntity, error)
+	CreateGraphGraphEdge(ctx context.Context, arg CreateGraphGraphEdgeParams) (GraphEdge, error)
 	// Create a new observation for an entity
-	CreateObservation(ctx context.Context, arg CreateObservationParams) (Observation, error)
+	CreateObservation(ctx context.Context, arg CreateObservationParams) (CreateObservationRow, error)
 	// Create a new operation history entry
 	CreateOperation(ctx context.Context, arg CreateOperationParams) (OperationHistory, error)
 	// Create a new snapshot for a workspace
-	CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (Snapshot, error)
+	CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (CreateSnapshotRow, error)
 	// Create a new workspace
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error)
-	// Delete entity by name
-	DeleteEntity(ctx context.Context, name string) error
 	// Delete specific relationship
 	DeleteEntityFileRelation(ctx context.Context, arg DeleteEntityFileRelationParams) error
 	// Delete all observations for an entity
 	DeleteEntityObservations(ctx context.Context, entityName string) error
 	// Delete file by ID
 	DeleteFile(ctx context.Context, id string) error
+	DeleteGraphEdge(ctx context.Context, id string) error
+	DeleteGraphEntity(ctx context.Context, id string) error
 	// Delete observation by ID
 	DeleteObservation(ctx context.Context, id int64) error
 	// Delete snapshot by ID
 	DeleteSnapshot(ctx context.Context, id string) error
 	// Delete workspace by ID
 	DeleteWorkspace(ctx context.Context, id string) error
+	GetCurrentGraphGraphEdges(ctx context.Context, arg GetCurrentGraphGraphEdgesParams) ([]GraphEdgesCurrent, error)
 	// Search entities by metadata content
-	GetEntitiesByMetadata(ctx context.Context, arg GetEntitiesByMetadataParams) ([]Entity, error)
+	GetEntitiesByMetadata(ctx context.Context, arg GetEntitiesByMetadataParams) ([]GetEntitiesByMetadataRow, error)
 	// Get entities ordered by number of observations
 	GetEntitiesByObservationCount(ctx context.Context, arg GetEntitiesByObservationCountParams) ([]GetEntitiesByObservationCountRow, error)
-	// Get all entities of a specific type
-	GetEntitiesByType(ctx context.Context, entityType string) ([]Entity, error)
 	// Get entities that have embeddings for vector operations
-	GetEntitiesWithEmbeddings(ctx context.Context, arg GetEntitiesWithEmbeddingsParams) ([]Entity, error)
-	// Get entities with observation counts and relation counts using window functions
-	GetEntitiesWithStats(ctx context.Context, arg GetEntitiesWithStatsParams) ([]GetEntitiesWithStatsRow, error)
-	// Get entity by name
-	GetEntity(ctx context.Context, name string) (Entity, error)
+	GetEntitiesWithEmbeddings(ctx context.Context, arg GetEntitiesWithEmbeddingsParams) ([]GetEntitiesWithEmbeddingsRow, error)
 	// Get network of relationships for analysis using CTEs
 	GetEntityFileNetwork(ctx context.Context, arg GetEntityFileNetworkParams) ([]GetEntityFileNetworkRow, error)
 	// Get specific entity-file relationship
 	GetEntityFileRelation(ctx context.Context, arg GetEntityFileRelationParams) (EntityFileRelation, error)
+	GetEntityNeighbors(ctx context.Context, arg GetEntityNeighborsParams) ([]GraphEntity, error)
 	// Get observation statistics for an entity
 	GetEntityObservationStats(ctx context.Context, entityName string) (GetEntityObservationStatsRow, error)
 	// Get all observations for an entity
-	GetEntityObservations(ctx context.Context, entityName string) ([]Observation, error)
+	GetEntityObservations(ctx context.Context, entityName string) ([]GetEntityObservationsRow, error)
 	// Get all relationships for an entity
 	GetEntityRelations(ctx context.Context, entityName string) ([]GetEntityRelationsRow, error)
-	// Get entity with its observations using CTE
-	GetEntityWithObservations(ctx context.Context, arg GetEntityWithObservationsParams) (GetEntityWithObservationsRow, error)
 	// Get file by ID
-	GetFile(ctx context.Context, id string) (File, error)
-	// Get file by workspace and path
-	GetFileByPath(ctx context.Context, arg GetFileByPathParams) (File, error)
+	GetFile(ctx context.Context, id string) (GetFileRow, error)
+	// Get a file by workspace and exact path
+	GetFileByPath(ctx context.Context, arg GetFileByPathParams) (GetFileByPathRow, error)
 	// Get all relationships for a file
 	GetFileRelations(ctx context.Context, fileID string) ([]GetFileRelationsRow, error)
 	// Get file statistics for a workspace
 	GetFileStatsByWorkspace(ctx context.Context, workspaceID string) (GetFileStatsByWorkspaceRow, error)
 	// Get files within a size range
-	GetFilesBySizeRange(ctx context.Context, arg GetFilesBySizeRangeParams) ([]File, error)
+	GetFilesBySizeRange(ctx context.Context, arg GetFilesBySizeRangeParams) ([]GetFilesBySizeRangeRow, error)
 	// Get files related to entities of specific type
 	GetFilesForEntityType(ctx context.Context, arg GetFilesForEntityTypeParams) ([]GetFilesForEntityTypeRow, error)
 	// Get files that have embeddings (for semantic search)
-	GetFilesWithEmbeddings(ctx context.Context, arg GetFilesWithEmbeddingsParams) ([]File, error)
+	GetFilesWithEmbeddings(ctx context.Context, arg GetFilesWithEmbeddingsParams) ([]GetFilesWithEmbeddingsRow, error)
 	// Get files that need embedding generation
 	GetFilesWithoutEmbeddings(ctx context.Context, arg GetFilesWithoutEmbeddingsParams) ([]GetFilesWithoutEmbeddingsRow, error)
+	GetGraphEdgeAttrs(ctx context.Context, id string) (string, error)
+	GetGraphEdgeProvenance(ctx context.Context, id string) (string, error)
+	GetGraphEntitiesByKind(ctx context.Context, arg GetGraphEntitiesByKindParams) ([]GraphEntity, error)
+	GetGraphEntitiesWithSummary(ctx context.Context, arg GetGraphEntitiesWithSummaryParams) ([]GraphEntity, error)
+	// SQLC queries for graph_entities table
+	// These queries will be generated into Go code for type-safe database operations
+	GetGraphEntity(ctx context.Context, id string) (GraphEntity, error)
+	GetGraphEntityAttrs(ctx context.Context, id string) (string, error)
+	// SQLC queries for graph_edges table
+	// These queries will be generated into Go code for type-safe database operations
+	GetGraphGraphEdge(ctx context.Context, id string) (GraphEdge, error)
+	GetGraphGraphEdgesAsOf(ctx context.Context, arg GetGraphGraphEdgesAsOfParams) ([]GraphEdge, error)
+	GetGraphGraphEdgesBetweenEntities(ctx context.Context, arg GetGraphGraphEdgesBetweenEntitiesParams) ([]GraphEdge, error)
+	GetGraphGraphEdgesByRelation(ctx context.Context, arg GetGraphGraphEdgesByRelationParams) ([]GraphEdge, error)
+	GetGraphGraphEdgesBySource(ctx context.Context, arg GetGraphGraphEdgesBySourceParams) ([]GraphEdge, error)
+	GetGraphGraphEdgesByTarget(ctx context.Context, arg GetGraphGraphEdgesByTargetParams) ([]GraphEdge, error)
+	GetGraphGraphEdgesByTimeRange(ctx context.Context, arg GetGraphGraphEdgesByTimeRangeParams) ([]GraphEdge, error)
+	GetGraphGraphEdgesWithValidity(ctx context.Context, arg GetGraphGraphEdgesWithValidityParams) ([]GraphEdge, error)
 	// Get relationships above confidence threshold
 	GetHighConfidenceRelations(ctx context.Context, arg GetHighConfidenceRelationsParams) ([]EntityFileRelation, error)
+	GetInvalidatedGraphGraphEdges(ctx context.Context, arg GetInvalidatedGraphGraphEdgesParams) ([]GraphEdge, error)
 	// Get the most recent snapshot for a workspace
-	GetLatestSnapshot(ctx context.Context, workspaceID string) (Snapshot, error)
+	GetLatestSnapshot(ctx context.Context, workspaceID string) (GetLatestSnapshotRow, error)
 	// Get observation by ID
-	GetObservation(ctx context.Context, id int64) (Observation, error)
+	GetObservation(ctx context.Context, id int64) (GetObservationRow, error)
 	// Get observations for multiple entities
-	GetObservationsByEntities(ctx context.Context, arg GetObservationsByEntitiesParams) ([]Observation, error)
+	GetObservationsByEntities(ctx context.Context, arg GetObservationsByEntitiesParams) ([]GetObservationsByEntitiesRow, error)
 	// Get observations within a time range
-	GetObservationsByTimeRange(ctx context.Context, arg GetObservationsByTimeRangeParams) ([]Observation, error)
+	GetObservationsByTimeRange(ctx context.Context, arg GetObservationsByTimeRangeParams) ([]GetObservationsByTimeRangeRow, error)
 	// Get observations that have embeddings for vector search
-	GetObservationsWithEmbeddings(ctx context.Context, arg GetObservationsWithEmbeddingsParams) ([]Observation, error)
+	GetObservationsWithEmbeddings(ctx context.Context, arg GetObservationsWithEmbeddingsParams) ([]GetObservationsWithEmbeddingsRow, error)
 	// Get operation by ID
 	GetOperation(ctx context.Context, id string) (OperationHistory, error)
 	// Get operation statistics for a workspace
@@ -138,13 +151,13 @@ type Querier interface {
 	// Find relations where entity or file no longer exists
 	GetOrphanedRelations(ctx context.Context) ([]GetOrphanedRelationsRow, error)
 	// Get recently created entities
-	GetRecentEntities(ctx context.Context, arg GetRecentEntitiesParams) ([]Entity, error)
+	GetRecentEntities(ctx context.Context, arg GetRecentEntitiesParams) ([]GetRecentEntitiesRow, error)
 	// Get recent observations across all entities
-	GetRecentObservations(ctx context.Context, arg GetRecentObservationsParams) ([]Observation, error)
+	GetRecentObservations(ctx context.Context, arg GetRecentObservationsParams) ([]GetRecentObservationsRow, error)
 	// Get recent operations across all workspaces
 	GetRecentOperations(ctx context.Context, arg GetRecentOperationsParams) ([]OperationHistory, error)
 	// Get files modified within a time range
-	GetRecentlyModifiedFiles(ctx context.Context, arg GetRecentlyModifiedFilesParams) ([]File, error)
+	GetRecentlyModifiedFiles(ctx context.Context, arg GetRecentlyModifiedFilesParams) ([]GetRecentlyModifiedFilesRow, error)
 	// Get comprehensive statistics about entity-file relationships
 	GetRelationStatistics(ctx context.Context) (GetRelationStatisticsRow, error)
 	// Get relationships of specific type with pagination
@@ -152,7 +165,7 @@ type Querier interface {
 	// Find entities similar to a file based on embeddings (placeholder for vector similarity)
 	GetSimilarEntitiesForFile(ctx context.Context, limit int64) ([]GetSimilarEntitiesForFileRow, error)
 	// Get snapshot by ID
-	GetSnapshot(ctx context.Context, id string) (Snapshot, error)
+	GetSnapshot(ctx context.Context, id string) (GetSnapshotRow, error)
 	// Get files most related to an entity with ranking
 	GetTopRelatedFiles(ctx context.Context, arg GetTopRelatedFilesParams) ([]GetTopRelatedFilesRow, error)
 	// Get workspace by ID
@@ -166,7 +179,7 @@ type Querier interface {
 	// Get operation history for a workspace
 	GetWorkspaceOperations(ctx context.Context, arg GetWorkspaceOperationsParams) ([]OperationHistory, error)
 	// Get all snapshots for a workspace
-	GetWorkspaceSnapshots(ctx context.Context, workspaceID string) ([]Snapshot, error)
+	GetWorkspaceSnapshots(ctx context.Context, workspaceID string) ([]GetWorkspaceSnapshotsRow, error)
 	// Get summary of all workspaces with their statistics
 	GetWorkspaceSummary(ctx context.Context) ([]GetWorkspaceSummaryRow, error)
 	// Get largest files in workspace
@@ -175,36 +188,39 @@ type Querier interface {
 	GetWorkspaceWithStats(ctx context.Context, arg GetWorkspaceWithStatsParams) (GetWorkspaceWithStatsRow, error)
 	// Get workspaces ordered by recent activity
 	GetWorkspacesByActivity(ctx context.Context, arg GetWorkspacesByActivityParams) ([]GetWorkspacesByActivityRow, error)
-	// List entities with pagination and filtering
-	ListEntities(ctx context.Context, arg ListEntitiesParams) ([]Entity, error)
-	// List files in a specific directory path
-	ListFilesByDirectory(ctx context.Context, arg ListFilesByDirectoryParams) ([]File, error)
+	InvalidateGraphEdge(ctx context.Context, id string) error
+	// List files whose path has a given directory prefix
+	ListFilesByDirectory(ctx context.Context, arg ListFilesByDirectoryParams) ([]ListFilesByDirectoryRow, error)
 	// List all files in a workspace with pagination
-	ListFilesByWorkspace(ctx context.Context, arg ListFilesByWorkspaceParams) ([]File, error)
+	ListFilesByWorkspace(ctx context.Context, arg ListFilesByWorkspaceParams) ([]ListFilesByWorkspaceRow, error)
+	ListGraphEntities(ctx context.Context, arg ListGraphEntitiesParams) ([]GraphEntity, error)
+	ListGraphGraphGraphEdges(ctx context.Context, arg ListGraphGraphGraphEdgesParams) ([]GraphEdge, error)
 	// List all workspaces with pagination
 	ListWorkspaces(ctx context.Context, arg ListWorkspacesParams) ([]Workspace, error)
-	// Basic text search in entity names and types
-	SearchEntities(ctx context.Context, arg SearchEntitiesParams) ([]Entity, error)
 	// Search entities by observation content
-	SearchEntitiesByContent(ctx context.Context, arg SearchEntitiesByContentParams) ([]Entity, error)
+	SearchEntitiesByContent(ctx context.Context, arg SearchEntitiesByContentParams) ([]SearchEntitiesByContentRow, error)
 	// Search entities by name
-	SearchEntitiesByName(ctx context.Context, arg SearchEntitiesByNameParams) ([]Entity, error)
+	SearchEntitiesByName(ctx context.Context, arg SearchEntitiesByNameParams) ([]SearchEntitiesByNameRow, error)
 	// Search entities by type
-	SearchEntitiesByType(ctx context.Context, arg SearchEntitiesByTypeParams) ([]Entity, error)
+	SearchEntitiesByType(ctx context.Context, arg SearchEntitiesByTypeParams) ([]SearchEntitiesByTypeRow, error)
 	// Search files by path or metadata content
-	SearchFiles(ctx context.Context, arg SearchFilesParams) ([]File, error)
+	SearchFiles(ctx context.Context, arg SearchFilesParams) ([]SearchFilesRow, error)
+	SearchGraphEntitiesFTS(ctx context.Context, arg SearchGraphEntitiesFTSParams) ([]SearchGraphEntitiesFTSRow, error)
 	// Search observations by content (basic LIKE search)
-	SearchObservations(ctx context.Context, arg SearchObservationsParams) ([]Observation, error)
+	SearchObservations(ctx context.Context, arg SearchObservationsParams) ([]SearchObservationsRow, error)
 	// Search workspaces by root path
 	SearchWorkspaces(ctx context.Context, arg SearchWorkspacesParams) ([]Workspace, error)
-	// Update entity with optimistic locking
-	UpdateEntity(ctx context.Context, arg UpdateEntityParams) (Entity, error)
 	// Update relationship confidence and metadata
 	UpdateEntityFileRelation(ctx context.Context, arg UpdateEntityFileRelationParams) (EntityFileRelation, error)
 	// Update file metadata
-	UpdateFile(ctx context.Context, arg UpdateFileParams) (File, error)
+	UpdateFile(ctx context.Context, arg UpdateFileParams) (UpdateFileRow, error)
+	UpdateGraphEdge(ctx context.Context, arg UpdateGraphEdgeParams) (GraphEdge, error)
+	UpdateGraphEdgeAttrs(ctx context.Context, arg UpdateGraphEdgeAttrsParams) error
+	UpdateGraphEdgeProvenance(ctx context.Context, arg UpdateGraphEdgeProvenanceParams) error
+	UpdateGraphEntity(ctx context.Context, arg UpdateGraphEntityParams) (GraphEntity, error)
+	UpdateGraphEntityAttrs(ctx context.Context, arg UpdateGraphEntityAttrsParams) error
 	// Update observation content and embedding
-	UpdateObservation(ctx context.Context, arg UpdateObservationParams) (Observation, error)
+	UpdateObservation(ctx context.Context, arg UpdateObservationParams) (UpdateObservationRow, error)
 	// Update workspace configuration
 	UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error)
 }

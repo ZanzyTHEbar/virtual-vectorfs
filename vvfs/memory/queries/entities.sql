@@ -1,186 +1,72 @@
--- name: CreateEntity :one
--- Create a new entity with upsert semantics
-INSERT INTO entities (
-        name,
-        entity_type,
-        embedding,
-        metadata,
-        created_at,
-        updated_at
-    )
-VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO
-UPDATE
-SET entity_type = excluded.entity_type,
-    embedding = excluded.embedding,
-    metadata = excluded.metadata,
-    updated_at = excluded.updated_at
-RETURNING name,
-    entity_type,
-    embedding,
-    metadata,
-    created_at,
-    updated_at;
--- name: GetEntity :one
--- Get entity by name
-SELECT name,
-    entity_type,
-    embedding,
-    metadata,
-    created_at,
-    updated_at
-FROM entities
-WHERE name = ?;
--- name: UpdateEntity :one
--- Update entity with optimistic locking
-UPDATE entities
-SET entity_type = ?,
-    embedding = ?,
-    metadata = ?,
-    updated_at = ?
-WHERE name = ?
-RETURNING name,
-    entity_type,
-    embedding,
-    metadata,
-    created_at,
-    updated_at;
--- name: DeleteEntity :exec
--- Delete entity by name
-DELETE FROM entities
-WHERE name = ?;
--- name: ListEntities :many
--- List entities with pagination and filtering
-SELECT name,
-    entity_type,
-    embedding,
-    metadata,
-    created_at,
-    updated_at
-FROM entities
-WHERE (
-        ? = ''
-        OR entity_type = ?
-    )
+-- SQLC queries for graph_entities table
+-- These queries will be generated into Go code for type-safe database operations
+
+-- name: GetGraphEntity :one
+SELECT id, kind, name, summary, attrs_json, created_at, updated_at
+FROM graph_entities
+WHERE id = ?;
+
+-- name: ListGraphEntities :many
+SELECT id, kind, name, summary, attrs_json, created_at, updated_at
+FROM graph_entities
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
--- name: GetEntitiesByType :many
--- Get all entities of a specific type
-SELECT name,
-    entity_type,
-    embedding,
-    metadata,
-    created_at,
-    updated_at
-FROM entities
-WHERE entity_type = ?
-ORDER BY name;
--- name: SearchEntities :many
--- Basic text search in entity names and types
-SELECT name,
-    entity_type,
-    embedding,
-    metadata,
-    created_at,
-    updated_at
-FROM entities
-WHERE name LIKE '%' || ? || '%'
-    OR entity_type LIKE '%' || ? || '%'
+
+-- name: CreateGraphEntity :one
+INSERT INTO graph_entities (id, kind, name, summary, attrs_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO UPDATE SET
+    kind = EXCLUDED.kind,
+    name = EXCLUDED.name,
+    summary = EXCLUDED.summary,
+    attrs_json = EXCLUDED.attrs_json,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id, kind, name, summary, attrs_json, created_at, updated_at;
+
+-- name: UpdateGraphEntity :one
+UPDATE graph_entities
+SET kind = ?, name = ?, summary = ?, attrs_json = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING id, kind, name, summary, attrs_json, created_at, updated_at;
+
+-- name: DeleteGraphEntity :exec
+DELETE FROM graph_entities WHERE id = ?;
+
+-- name: GetGraphEntitiesByKind :many
+SELECT id, kind, name, summary, attrs_json, created_at, updated_at
+FROM graph_entities
+WHERE kind = ?
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
--- name: GetEntityWithObservations :one
--- Get entity with its observations using CTE
-WITH entity_data AS (
-    SELECT name,
-        entity_type,
-        embedding,
-        metadata,
-        created_at,
-        updated_at
-    FROM entities
-    WHERE name = ?
-),
-observation_data AS (
-    SELECT entity_name,
-        content,
-        embedding,
-        created_at
-    FROM observations
-    WHERE entity_name = ?
-    ORDER BY created_at DESC
-    LIMIT ?
-)
-SELECT e.name,
-    e.entity_type,
-    e.embedding,
-    e.metadata,
-    e.created_at,
-    e.updated_at,
-    GROUP_CONCAT(o.content, ' | ') as observations_content,
-    COUNT(o.entity_name) as observation_count
-FROM entity_data e
-    LEFT JOIN observation_data o ON e.name = o.entity_name
-GROUP BY e.name,
-    e.entity_type,
-    e.embedding,
-    e.metadata,
-    e.created_at,
-    e.updated_at;
--- name: GetEntitiesWithStats :many
--- Get entities with observation counts and relation counts using window functions
-WITH entity_stats AS (
-    SELECT e.name,
-        e.entity_type,
-        e.embedding,
-        e.metadata,
-        e.created_at,
-        e.updated_at,
-        COUNT(DISTINCT o.id) as observation_count,
-        COUNT(
-            DISTINCT CASE
-                WHEN r.source = e.name THEN r.id
-            END
-        ) as outgoing_relation_count,
-        COUNT(
-            DISTINCT CASE
-                WHEN r.target = e.name THEN r.id
-            END
-        ) as incoming_relation_count
-    FROM entities e
-        LEFT JOIN observations o ON e.name = o.entity_name
-        LEFT JOIN relations r ON e.name = r.source
-        OR e.name = r.target
-    GROUP BY e.name,
-        e.entity_type,
-        e.embedding,
-        e.metadata,
-        e.created_at,
-        e.updated_at
-)
-SELECT *
-FROM entity_stats
-ORDER BY observation_count DESC,
-    created_at DESC
+
+-- name: SearchGraphEntitiesFTS :many
+SELECT e.id, e.kind, e.name, e.summary, e.attrs_json, e.created_at, e.updated_at,
+       highlight(graph_entities_fts, 0, '<mark>', '</mark>') as highlighted_name,
+       highlight(graph_entities_fts, 1, '<mark>', '</mark>') as highlighted_summary,
+       bm25(graph_entities_fts) as bm25_score
+FROM graph_entities_fts
+JOIN graph_entities e ON graph_entities_fts.rowid = e.rowid
+WHERE graph_entities_fts MATCH ?
+ORDER BY bm25(graph_entities_fts) DESC
 LIMIT ? OFFSET ?;
--- name: BatchCreateEntities :exec
--- Batch insert multiple entities
-INSERT INTO entities (
-        name,
-        entity_type,
-        embedding,
-        metadata,
-        created_at,
-        updated_at
-    )
-VALUES (?, ?, ?, ?, ?, ?);
--- name: BatchUpdateEntities :exec
--- Batch update multiple entities
-UPDATE entities
-SET entity_type = ?,
-    embedding = ?,
-    metadata = ?,
-    updated_at = ?
-WHERE name = ?;
--- name: BatchDeleteEntities :exec
--- Batch delete multiple entities
-DELETE FROM entities
-WHERE name = ?;
+
+-- name: CountGraphEntities :one
+SELECT COUNT(*) FROM graph_entities;
+
+-- name: CountGraphEntitiesByKind :one
+SELECT COUNT(*) FROM graph_entities WHERE kind = ?;
+
+-- name: GetGraphEntityAttrs :one
+SELECT attrs_json FROM graph_entities WHERE id = ?;
+
+-- name: UpdateGraphEntityAttrs :exec
+UPDATE graph_entities
+SET attrs_json = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: GetGraphEntitiesWithSummary :many
+SELECT id, kind, name, summary, attrs_json, created_at, updated_at
+FROM graph_entities
+WHERE summary IS NOT NULL AND summary != ''
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?;

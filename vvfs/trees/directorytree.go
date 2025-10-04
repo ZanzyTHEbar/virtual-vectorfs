@@ -538,6 +538,22 @@ func (dt *DirectoryTree) walkAndCollect(node *DirectoryNode, predicate func(*Dir
 	}
 }
 
+// normalizePath provides central path normalization using filepath.Clean + filepath.ToSlash
+func normalizePath(path string) string {
+	if path == "" {
+		return path
+	}
+	// First replace backslashes with forward slashes (for Windows paths)
+	normalized := strings.ReplaceAll(path, "\\", "/")
+	// Then clean the path to resolve . and .. elements
+	normalized = filepath.ToSlash(filepath.Clean(normalized))
+	// Remove trailing slash unless it's the root
+	if len(normalized) > 1 && strings.HasSuffix(normalized, "/") {
+		normalized = strings.TrimSuffix(normalized, "/")
+	}
+	return normalized
+}
+
 // splitPathSegments splits a filesystem path into clean, non-empty segments.
 // It avoids misuse of filepath.SplitList which is for PATH lists, not components.
 func splitPathSegments(p string) []string {

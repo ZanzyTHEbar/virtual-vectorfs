@@ -10,6 +10,8 @@ import (
 )
 
 // SearchEntities performs FTS-backed (or LIKE-fallback) search over observations + entity_name
+//
+// Relations are expected to be fetched by caller as needed; return empty to avoid heavy join
 func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, query string, limit, offset int) ([]apptype.Entity, []apptype.Relation, error) {
 	db, err := dm.getDB(projectName)
 	if err != nil {

@@ -80,15 +80,23 @@ type CreateObservationParams struct {
 	CreatedAt  int64       `json:"created_at"`
 }
 
+type CreateObservationRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Create a new observation for an entity
-func (q *Queries) CreateObservation(ctx context.Context, arg CreateObservationParams) (Observation, error) {
+func (q *Queries) CreateObservation(ctx context.Context, arg CreateObservationParams) (CreateObservationRow, error) {
 	row := q.queryRow(ctx, q.createObservationStmt, createObservation,
 		arg.EntityName,
 		arg.Content,
 		arg.Embedding,
 		arg.CreatedAt,
 	)
-	var i Observation
+	var i CreateObservationRow
 	err := row.Scan(
 		&i.ID,
 		&i.EntityName,
@@ -168,16 +176,24 @@ WHERE entity_name = ?
 ORDER BY created_at DESC
 `
 
+type GetEntityObservationsRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Get all observations for an entity
-func (q *Queries) GetEntityObservations(ctx context.Context, entityName string) ([]Observation, error) {
+func (q *Queries) GetEntityObservations(ctx context.Context, entityName string) ([]GetEntityObservationsRow, error) {
 	rows, err := q.query(ctx, q.getEntityObservationsStmt, getEntityObservations, entityName)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Observation{}
+	items := []GetEntityObservationsRow{}
 	for rows.Next() {
-		var i Observation
+		var i GetEntityObservationsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EntityName,
@@ -208,10 +224,18 @@ FROM observations
 WHERE id = ?
 `
 
+type GetObservationRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Get observation by ID
-func (q *Queries) GetObservation(ctx context.Context, id int64) (Observation, error) {
+func (q *Queries) GetObservation(ctx context.Context, id int64) (GetObservationRow, error) {
 	row := q.queryRow(ctx, q.getObservationStmt, getObservation, id)
-	var i Observation
+	var i GetObservationRow
 	err := row.Scan(
 		&i.ID,
 		&i.EntityName,
@@ -240,16 +264,24 @@ type GetObservationsByEntitiesParams struct {
 	EntityName_3 string `json:"entity_name_3"`
 }
 
+type GetObservationsByEntitiesRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Get observations for multiple entities
-func (q *Queries) GetObservationsByEntities(ctx context.Context, arg GetObservationsByEntitiesParams) ([]Observation, error) {
+func (q *Queries) GetObservationsByEntities(ctx context.Context, arg GetObservationsByEntitiesParams) ([]GetObservationsByEntitiesRow, error) {
 	rows, err := q.query(ctx, q.getObservationsByEntitiesStmt, getObservationsByEntities, arg.EntityName, arg.EntityName_2, arg.EntityName_3)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Observation{}
+	items := []GetObservationsByEntitiesRow{}
 	for rows.Next() {
-		var i Observation
+		var i GetObservationsByEntitiesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EntityName,
@@ -290,8 +322,16 @@ type GetObservationsByTimeRangeParams struct {
 	Offset      int64 `json:"offset"`
 }
 
+type GetObservationsByTimeRangeRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Get observations within a time range
-func (q *Queries) GetObservationsByTimeRange(ctx context.Context, arg GetObservationsByTimeRangeParams) ([]Observation, error) {
+func (q *Queries) GetObservationsByTimeRange(ctx context.Context, arg GetObservationsByTimeRangeParams) ([]GetObservationsByTimeRangeRow, error) {
 	rows, err := q.query(ctx, q.getObservationsByTimeRangeStmt, getObservationsByTimeRange,
 		arg.CreatedAt,
 		arg.CreatedAt_2,
@@ -302,9 +342,9 @@ func (q *Queries) GetObservationsByTimeRange(ctx context.Context, arg GetObserva
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Observation{}
+	items := []GetObservationsByTimeRangeRow{}
 	for rows.Next() {
-		var i Observation
+		var i GetObservationsByTimeRangeRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EntityName,
@@ -342,16 +382,24 @@ type GetObservationsWithEmbeddingsParams struct {
 	Offset int64 `json:"offset"`
 }
 
+type GetObservationsWithEmbeddingsRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Get observations that have embeddings for vector search
-func (q *Queries) GetObservationsWithEmbeddings(ctx context.Context, arg GetObservationsWithEmbeddingsParams) ([]Observation, error) {
+func (q *Queries) GetObservationsWithEmbeddings(ctx context.Context, arg GetObservationsWithEmbeddingsParams) ([]GetObservationsWithEmbeddingsRow, error) {
 	rows, err := q.query(ctx, q.getObservationsWithEmbeddingsStmt, getObservationsWithEmbeddings, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Observation{}
+	items := []GetObservationsWithEmbeddingsRow{}
 	for rows.Next() {
-		var i Observation
+		var i GetObservationsWithEmbeddingsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EntityName,
@@ -388,16 +436,24 @@ type GetRecentObservationsParams struct {
 	Offset int64 `json:"offset"`
 }
 
+type GetRecentObservationsRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Get recent observations across all entities
-func (q *Queries) GetRecentObservations(ctx context.Context, arg GetRecentObservationsParams) ([]Observation, error) {
+func (q *Queries) GetRecentObservations(ctx context.Context, arg GetRecentObservationsParams) ([]GetRecentObservationsRow, error) {
 	rows, err := q.query(ctx, q.getRecentObservationsStmt, getRecentObservations, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Observation{}
+	items := []GetRecentObservationsRow{}
 	for rows.Next() {
-		var i Observation
+		var i GetRecentObservationsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EntityName,
@@ -438,8 +494,16 @@ type SearchObservationsParams struct {
 	Offset  int64          `json:"offset"`
 }
 
+type SearchObservationsRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Search observations by content (basic LIKE search)
-func (q *Queries) SearchObservations(ctx context.Context, arg SearchObservationsParams) ([]Observation, error) {
+func (q *Queries) SearchObservations(ctx context.Context, arg SearchObservationsParams) ([]SearchObservationsRow, error) {
 	rows, err := q.query(ctx, q.searchObservationsStmt, searchObservations,
 		arg.Column1,
 		arg.Column2,
@@ -450,9 +514,9 @@ func (q *Queries) SearchObservations(ctx context.Context, arg SearchObservations
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Observation{}
+	items := []SearchObservationsRow{}
 	for rows.Next() {
-		var i Observation
+		var i SearchObservationsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EntityName,
@@ -491,10 +555,18 @@ type UpdateObservationParams struct {
 	ID        int64       `json:"id"`
 }
 
+type UpdateObservationRow struct {
+	ID         int64       `json:"id"`
+	EntityName string      `json:"entity_name"`
+	Content    string      `json:"content"`
+	Embedding  interface{} `json:"embedding"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
 // Update observation content and embedding
-func (q *Queries) UpdateObservation(ctx context.Context, arg UpdateObservationParams) (Observation, error) {
+func (q *Queries) UpdateObservation(ctx context.Context, arg UpdateObservationParams) (UpdateObservationRow, error) {
 	row := q.queryRow(ctx, q.updateObservationStmt, updateObservation, arg.Content, arg.Embedding, arg.ID)
-	var i Observation
+	var i UpdateObservationRow
 	err := row.Scan(
 		&i.ID,
 		&i.EntityName,

@@ -1,5 +1,5 @@
 # LibSQL static build for linux/arm64 (pinned v0.9.23 - commit 7eed898)
-FROM rust:1.76-bullseye as builder
+FROM rust:1.76-bullseye AS builder
 
 RUN apt-get update && apt-get install -y build-essential clang llvm lld pkg-config git curl unzip cmake && rm -rf /var/lib/apt/lists/*
 

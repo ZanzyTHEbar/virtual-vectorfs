@@ -531,6 +531,10 @@ func (w *FanotifyWatcher) parseEvents(buf []byte) []Event {
 
 // convertFanotifyEvent converts a fanotify event to a watcher.Event
 func (w *FanotifyWatcher) convertFanotifyEvent(event *fanotifyEventMetadata) *Event {
+	if event == nil {
+		return nil
+	}
+
 	// Get the path from the file descriptor
 	path, err := w.getPathFromFd(int(event.Fd))
 	if err != nil {

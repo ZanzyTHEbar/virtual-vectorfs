@@ -24,9 +24,6 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
-	if q.batchCreateEntitiesStmt, err = db.PrepareContext(ctx, batchCreateEntities); err != nil {
-		return nil, fmt.Errorf("error preparing query BatchCreateEntities: %w", err)
-	}
 	if q.batchCreateEntityFileRelationsStmt, err = db.PrepareContext(ctx, batchCreateEntityFileRelations); err != nil {
 		return nil, fmt.Errorf("error preparing query BatchCreateEntityFileRelations: %w", err)
 	}
@@ -42,17 +39,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.batchCreateWorkspacesStmt, err = db.PrepareContext(ctx, batchCreateWorkspaces); err != nil {
 		return nil, fmt.Errorf("error preparing query BatchCreateWorkspaces: %w", err)
 	}
-	if q.batchDeleteEntitiesStmt, err = db.PrepareContext(ctx, batchDeleteEntities); err != nil {
-		return nil, fmt.Errorf("error preparing query BatchDeleteEntities: %w", err)
-	}
 	if q.batchDeleteFilesStmt, err = db.PrepareContext(ctx, batchDeleteFiles); err != nil {
 		return nil, fmt.Errorf("error preparing query BatchDeleteFiles: %w", err)
 	}
 	if q.batchDeleteObservationsStmt, err = db.PrepareContext(ctx, batchDeleteObservations); err != nil {
 		return nil, fmt.Errorf("error preparing query BatchDeleteObservations: %w", err)
-	}
-	if q.batchUpdateEntitiesStmt, err = db.PrepareContext(ctx, batchUpdateEntities); err != nil {
-		return nil, fmt.Errorf("error preparing query BatchUpdateEntities: %w", err)
 	}
 	if q.batchUpdateFilesStmt, err = db.PrepareContext(ctx, batchUpdateFiles); err != nil {
 		return nil, fmt.Errorf("error preparing query BatchUpdateFiles: %w", err)
@@ -75,14 +66,35 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.cleanupOldOperationsStmt, err = db.PrepareContext(ctx, cleanupOldOperations); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupOldOperations: %w", err)
 	}
-	if q.createEntityStmt, err = db.PrepareContext(ctx, createEntity); err != nil {
-		return nil, fmt.Errorf("error preparing query CreateEntity: %w", err)
+	if q.countGraphEntitiesStmt, err = db.PrepareContext(ctx, countGraphEntities); err != nil {
+		return nil, fmt.Errorf("error preparing query CountGraphEntities: %w", err)
+	}
+	if q.countGraphEntitiesByKindStmt, err = db.PrepareContext(ctx, countGraphEntitiesByKind); err != nil {
+		return nil, fmt.Errorf("error preparing query CountGraphEntitiesByKind: %w", err)
+	}
+	if q.countGraphGraphEdgesStmt, err = db.PrepareContext(ctx, countGraphGraphEdges); err != nil {
+		return nil, fmt.Errorf("error preparing query CountGraphGraphEdges: %w", err)
+	}
+	if q.countGraphGraphEdgesByRelationStmt, err = db.PrepareContext(ctx, countGraphGraphEdgesByRelation); err != nil {
+		return nil, fmt.Errorf("error preparing query CountGraphGraphEdgesByRelation: %w", err)
+	}
+	if q.countGraphGraphEdgesBySourceStmt, err = db.PrepareContext(ctx, countGraphGraphEdgesBySource); err != nil {
+		return nil, fmt.Errorf("error preparing query CountGraphGraphEdgesBySource: %w", err)
+	}
+	if q.countGraphGraphEdgesByTargetStmt, err = db.PrepareContext(ctx, countGraphGraphEdgesByTarget); err != nil {
+		return nil, fmt.Errorf("error preparing query CountGraphGraphEdgesByTarget: %w", err)
 	}
 	if q.createEntityFileRelationStmt, err = db.PrepareContext(ctx, createEntityFileRelation); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateEntityFileRelation: %w", err)
 	}
 	if q.createFileStmt, err = db.PrepareContext(ctx, createFile); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateFile: %w", err)
+	}
+	if q.createGraphEntityStmt, err = db.PrepareContext(ctx, createGraphEntity); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateGraphEntity: %w", err)
+	}
+	if q.createGraphGraphEdgeStmt, err = db.PrepareContext(ctx, createGraphGraphEdge); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateGraphGraphEdge: %w", err)
 	}
 	if q.createObservationStmt, err = db.PrepareContext(ctx, createObservation); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateObservation: %w", err)
@@ -96,9 +108,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createWorkspaceStmt, err = db.PrepareContext(ctx, createWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateWorkspace: %w", err)
 	}
-	if q.deleteEntityStmt, err = db.PrepareContext(ctx, deleteEntity); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteEntity: %w", err)
-	}
 	if q.deleteEntityFileRelationStmt, err = db.PrepareContext(ctx, deleteEntityFileRelation); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEntityFileRelation: %w", err)
 	}
@@ -107,6 +116,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteFileStmt, err = db.PrepareContext(ctx, deleteFile); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteFile: %w", err)
+	}
+	if q.deleteGraphEdgeStmt, err = db.PrepareContext(ctx, deleteGraphEdge); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGraphEdge: %w", err)
+	}
+	if q.deleteGraphEntityStmt, err = db.PrepareContext(ctx, deleteGraphEntity); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGraphEntity: %w", err)
 	}
 	if q.deleteObservationStmt, err = db.PrepareContext(ctx, deleteObservation); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteObservation: %w", err)
@@ -117,29 +132,26 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteWorkspaceStmt, err = db.PrepareContext(ctx, deleteWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteWorkspace: %w", err)
 	}
+	if q.getCurrentGraphGraphEdgesStmt, err = db.PrepareContext(ctx, getCurrentGraphGraphEdges); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCurrentGraphGraphEdges: %w", err)
+	}
 	if q.getEntitiesByMetadataStmt, err = db.PrepareContext(ctx, getEntitiesByMetadata); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEntitiesByMetadata: %w", err)
 	}
 	if q.getEntitiesByObservationCountStmt, err = db.PrepareContext(ctx, getEntitiesByObservationCount); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEntitiesByObservationCount: %w", err)
 	}
-	if q.getEntitiesByTypeStmt, err = db.PrepareContext(ctx, getEntitiesByType); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEntitiesByType: %w", err)
-	}
 	if q.getEntitiesWithEmbeddingsStmt, err = db.PrepareContext(ctx, getEntitiesWithEmbeddings); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEntitiesWithEmbeddings: %w", err)
-	}
-	if q.getEntitiesWithStatsStmt, err = db.PrepareContext(ctx, getEntitiesWithStats); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEntitiesWithStats: %w", err)
-	}
-	if q.getEntityStmt, err = db.PrepareContext(ctx, getEntity); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEntity: %w", err)
 	}
 	if q.getEntityFileNetworkStmt, err = db.PrepareContext(ctx, getEntityFileNetwork); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEntityFileNetwork: %w", err)
 	}
 	if q.getEntityFileRelationStmt, err = db.PrepareContext(ctx, getEntityFileRelation); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEntityFileRelation: %w", err)
+	}
+	if q.getEntityNeighborsStmt, err = db.PrepareContext(ctx, getEntityNeighbors); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEntityNeighbors: %w", err)
 	}
 	if q.getEntityObservationStatsStmt, err = db.PrepareContext(ctx, getEntityObservationStats); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEntityObservationStats: %w", err)
@@ -149,9 +161,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getEntityRelationsStmt, err = db.PrepareContext(ctx, getEntityRelations); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEntityRelations: %w", err)
-	}
-	if q.getEntityWithObservationsStmt, err = db.PrepareContext(ctx, getEntityWithObservations); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEntityWithObservations: %w", err)
 	}
 	if q.getFileStmt, err = db.PrepareContext(ctx, getFile); err != nil {
 		return nil, fmt.Errorf("error preparing query GetFile: %w", err)
@@ -177,8 +186,53 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getFilesWithoutEmbeddingsStmt, err = db.PrepareContext(ctx, getFilesWithoutEmbeddings); err != nil {
 		return nil, fmt.Errorf("error preparing query GetFilesWithoutEmbeddings: %w", err)
 	}
+	if q.getGraphEdgeAttrsStmt, err = db.PrepareContext(ctx, getGraphEdgeAttrs); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphEdgeAttrs: %w", err)
+	}
+	if q.getGraphEdgeProvenanceStmt, err = db.PrepareContext(ctx, getGraphEdgeProvenance); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphEdgeProvenance: %w", err)
+	}
+	if q.getGraphEntitiesByKindStmt, err = db.PrepareContext(ctx, getGraphEntitiesByKind); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphEntitiesByKind: %w", err)
+	}
+	if q.getGraphEntitiesWithSummaryStmt, err = db.PrepareContext(ctx, getGraphEntitiesWithSummary); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphEntitiesWithSummary: %w", err)
+	}
+	if q.getGraphEntityStmt, err = db.PrepareContext(ctx, getGraphEntity); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphEntity: %w", err)
+	}
+	if q.getGraphEntityAttrsStmt, err = db.PrepareContext(ctx, getGraphEntityAttrs); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphEntityAttrs: %w", err)
+	}
+	if q.getGraphGraphEdgeStmt, err = db.PrepareContext(ctx, getGraphGraphEdge); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdge: %w", err)
+	}
+	if q.getGraphGraphEdgesAsOfStmt, err = db.PrepareContext(ctx, getGraphGraphEdgesAsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdgesAsOf: %w", err)
+	}
+	if q.getGraphGraphEdgesBetweenEntitiesStmt, err = db.PrepareContext(ctx, getGraphGraphEdgesBetweenEntities); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdgesBetweenEntities: %w", err)
+	}
+	if q.getGraphGraphEdgesByRelationStmt, err = db.PrepareContext(ctx, getGraphGraphEdgesByRelation); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdgesByRelation: %w", err)
+	}
+	if q.getGraphGraphEdgesBySourceStmt, err = db.PrepareContext(ctx, getGraphGraphEdgesBySource); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdgesBySource: %w", err)
+	}
+	if q.getGraphGraphEdgesByTargetStmt, err = db.PrepareContext(ctx, getGraphGraphEdgesByTarget); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdgesByTarget: %w", err)
+	}
+	if q.getGraphGraphEdgesByTimeRangeStmt, err = db.PrepareContext(ctx, getGraphGraphEdgesByTimeRange); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdgesByTimeRange: %w", err)
+	}
+	if q.getGraphGraphEdgesWithValidityStmt, err = db.PrepareContext(ctx, getGraphGraphEdgesWithValidity); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGraphGraphEdgesWithValidity: %w", err)
+	}
 	if q.getHighConfidenceRelationsStmt, err = db.PrepareContext(ctx, getHighConfidenceRelations); err != nil {
 		return nil, fmt.Errorf("error preparing query GetHighConfidenceRelations: %w", err)
+	}
+	if q.getInvalidatedGraphGraphEdgesStmt, err = db.PrepareContext(ctx, getInvalidatedGraphGraphEdges); err != nil {
+		return nil, fmt.Errorf("error preparing query GetInvalidatedGraphGraphEdges: %w", err)
 	}
 	if q.getLatestSnapshotStmt, err = db.PrepareContext(ctx, getLatestSnapshot); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatestSnapshot: %w", err)
@@ -273,8 +327,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getWorkspacesByActivityStmt, err = db.PrepareContext(ctx, getWorkspacesByActivity); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWorkspacesByActivity: %w", err)
 	}
-	if q.listEntitiesStmt, err = db.PrepareContext(ctx, listEntities); err != nil {
-		return nil, fmt.Errorf("error preparing query ListEntities: %w", err)
+	if q.invalidateGraphEdgeStmt, err = db.PrepareContext(ctx, invalidateGraphEdge); err != nil {
+		return nil, fmt.Errorf("error preparing query InvalidateGraphEdge: %w", err)
 	}
 	if q.listFilesByDirectoryStmt, err = db.PrepareContext(ctx, listFilesByDirectory); err != nil {
 		return nil, fmt.Errorf("error preparing query ListFilesByDirectory: %w", err)
@@ -282,11 +336,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listFilesByWorkspaceStmt, err = db.PrepareContext(ctx, listFilesByWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query ListFilesByWorkspace: %w", err)
 	}
+	if q.listGraphEntitiesStmt, err = db.PrepareContext(ctx, listGraphEntities); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGraphEntities: %w", err)
+	}
+	if q.listGraphGraphGraphEdgesStmt, err = db.PrepareContext(ctx, listGraphGraphGraphEdges); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGraphGraphGraphEdges: %w", err)
+	}
 	if q.listWorkspacesStmt, err = db.PrepareContext(ctx, listWorkspaces); err != nil {
 		return nil, fmt.Errorf("error preparing query ListWorkspaces: %w", err)
-	}
-	if q.searchEntitiesStmt, err = db.PrepareContext(ctx, searchEntities); err != nil {
-		return nil, fmt.Errorf("error preparing query SearchEntities: %w", err)
 	}
 	if q.searchEntitiesByContentStmt, err = db.PrepareContext(ctx, searchEntitiesByContent); err != nil {
 		return nil, fmt.Errorf("error preparing query SearchEntitiesByContent: %w", err)
@@ -300,20 +357,35 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.searchFilesStmt, err = db.PrepareContext(ctx, searchFiles); err != nil {
 		return nil, fmt.Errorf("error preparing query SearchFiles: %w", err)
 	}
+	if q.searchGraphEntitiesFTSStmt, err = db.PrepareContext(ctx, searchGraphEntitiesFTS); err != nil {
+		return nil, fmt.Errorf("error preparing query SearchGraphEntitiesFTS: %w", err)
+	}
 	if q.searchObservationsStmt, err = db.PrepareContext(ctx, searchObservations); err != nil {
 		return nil, fmt.Errorf("error preparing query SearchObservations: %w", err)
 	}
 	if q.searchWorkspacesStmt, err = db.PrepareContext(ctx, searchWorkspaces); err != nil {
 		return nil, fmt.Errorf("error preparing query SearchWorkspaces: %w", err)
 	}
-	if q.updateEntityStmt, err = db.PrepareContext(ctx, updateEntity); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateEntity: %w", err)
-	}
 	if q.updateEntityFileRelationStmt, err = db.PrepareContext(ctx, updateEntityFileRelation); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateEntityFileRelation: %w", err)
 	}
 	if q.updateFileStmt, err = db.PrepareContext(ctx, updateFile); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateFile: %w", err)
+	}
+	if q.updateGraphEdgeStmt, err = db.PrepareContext(ctx, updateGraphEdge); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGraphEdge: %w", err)
+	}
+	if q.updateGraphEdgeAttrsStmt, err = db.PrepareContext(ctx, updateGraphEdgeAttrs); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGraphEdgeAttrs: %w", err)
+	}
+	if q.updateGraphEdgeProvenanceStmt, err = db.PrepareContext(ctx, updateGraphEdgeProvenance); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGraphEdgeProvenance: %w", err)
+	}
+	if q.updateGraphEntityStmt, err = db.PrepareContext(ctx, updateGraphEntity); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGraphEntity: %w", err)
+	}
+	if q.updateGraphEntityAttrsStmt, err = db.PrepareContext(ctx, updateGraphEntityAttrs); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGraphEntityAttrs: %w", err)
 	}
 	if q.updateObservationStmt, err = db.PrepareContext(ctx, updateObservation); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateObservation: %w", err)
@@ -326,11 +398,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
-	if q.batchCreateEntitiesStmt != nil {
-		if cerr := q.batchCreateEntitiesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing batchCreateEntitiesStmt: %w", cerr)
-		}
-	}
 	if q.batchCreateEntityFileRelationsStmt != nil {
 		if cerr := q.batchCreateEntityFileRelationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing batchCreateEntityFileRelationsStmt: %w", cerr)
@@ -356,11 +423,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing batchCreateWorkspacesStmt: %w", cerr)
 		}
 	}
-	if q.batchDeleteEntitiesStmt != nil {
-		if cerr := q.batchDeleteEntitiesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing batchDeleteEntitiesStmt: %w", cerr)
-		}
-	}
 	if q.batchDeleteFilesStmt != nil {
 		if cerr := q.batchDeleteFilesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing batchDeleteFilesStmt: %w", cerr)
@@ -369,11 +431,6 @@ func (q *Queries) Close() error {
 	if q.batchDeleteObservationsStmt != nil {
 		if cerr := q.batchDeleteObservationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing batchDeleteObservationsStmt: %w", cerr)
-		}
-	}
-	if q.batchUpdateEntitiesStmt != nil {
-		if cerr := q.batchUpdateEntitiesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing batchUpdateEntitiesStmt: %w", cerr)
 		}
 	}
 	if q.batchUpdateFilesStmt != nil {
@@ -411,9 +468,34 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing cleanupOldOperationsStmt: %w", cerr)
 		}
 	}
-	if q.createEntityStmt != nil {
-		if cerr := q.createEntityStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing createEntityStmt: %w", cerr)
+	if q.countGraphEntitiesStmt != nil {
+		if cerr := q.countGraphEntitiesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countGraphEntitiesStmt: %w", cerr)
+		}
+	}
+	if q.countGraphEntitiesByKindStmt != nil {
+		if cerr := q.countGraphEntitiesByKindStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countGraphEntitiesByKindStmt: %w", cerr)
+		}
+	}
+	if q.countGraphGraphEdgesStmt != nil {
+		if cerr := q.countGraphGraphEdgesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countGraphGraphEdgesStmt: %w", cerr)
+		}
+	}
+	if q.countGraphGraphEdgesByRelationStmt != nil {
+		if cerr := q.countGraphGraphEdgesByRelationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countGraphGraphEdgesByRelationStmt: %w", cerr)
+		}
+	}
+	if q.countGraphGraphEdgesBySourceStmt != nil {
+		if cerr := q.countGraphGraphEdgesBySourceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countGraphGraphEdgesBySourceStmt: %w", cerr)
+		}
+	}
+	if q.countGraphGraphEdgesByTargetStmt != nil {
+		if cerr := q.countGraphGraphEdgesByTargetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countGraphGraphEdgesByTargetStmt: %w", cerr)
 		}
 	}
 	if q.createEntityFileRelationStmt != nil {
@@ -424,6 +506,16 @@ func (q *Queries) Close() error {
 	if q.createFileStmt != nil {
 		if cerr := q.createFileStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createFileStmt: %w", cerr)
+		}
+	}
+	if q.createGraphEntityStmt != nil {
+		if cerr := q.createGraphEntityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createGraphEntityStmt: %w", cerr)
+		}
+	}
+	if q.createGraphGraphEdgeStmt != nil {
+		if cerr := q.createGraphGraphEdgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createGraphGraphEdgeStmt: %w", cerr)
 		}
 	}
 	if q.createObservationStmt != nil {
@@ -446,11 +538,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createWorkspaceStmt: %w", cerr)
 		}
 	}
-	if q.deleteEntityStmt != nil {
-		if cerr := q.deleteEntityStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteEntityStmt: %w", cerr)
-		}
-	}
 	if q.deleteEntityFileRelationStmt != nil {
 		if cerr := q.deleteEntityFileRelationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEntityFileRelationStmt: %w", cerr)
@@ -464,6 +551,16 @@ func (q *Queries) Close() error {
 	if q.deleteFileStmt != nil {
 		if cerr := q.deleteFileStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteFileStmt: %w", cerr)
+		}
+	}
+	if q.deleteGraphEdgeStmt != nil {
+		if cerr := q.deleteGraphEdgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGraphEdgeStmt: %w", cerr)
+		}
+	}
+	if q.deleteGraphEntityStmt != nil {
+		if cerr := q.deleteGraphEntityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGraphEntityStmt: %w", cerr)
 		}
 	}
 	if q.deleteObservationStmt != nil {
@@ -481,6 +578,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteWorkspaceStmt: %w", cerr)
 		}
 	}
+	if q.getCurrentGraphGraphEdgesStmt != nil {
+		if cerr := q.getCurrentGraphGraphEdgesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCurrentGraphGraphEdgesStmt: %w", cerr)
+		}
+	}
 	if q.getEntitiesByMetadataStmt != nil {
 		if cerr := q.getEntitiesByMetadataStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEntitiesByMetadataStmt: %w", cerr)
@@ -491,24 +593,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEntitiesByObservationCountStmt: %w", cerr)
 		}
 	}
-	if q.getEntitiesByTypeStmt != nil {
-		if cerr := q.getEntitiesByTypeStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEntitiesByTypeStmt: %w", cerr)
-		}
-	}
 	if q.getEntitiesWithEmbeddingsStmt != nil {
 		if cerr := q.getEntitiesWithEmbeddingsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEntitiesWithEmbeddingsStmt: %w", cerr)
-		}
-	}
-	if q.getEntitiesWithStatsStmt != nil {
-		if cerr := q.getEntitiesWithStatsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEntitiesWithStatsStmt: %w", cerr)
-		}
-	}
-	if q.getEntityStmt != nil {
-		if cerr := q.getEntityStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEntityStmt: %w", cerr)
 		}
 	}
 	if q.getEntityFileNetworkStmt != nil {
@@ -519,6 +606,11 @@ func (q *Queries) Close() error {
 	if q.getEntityFileRelationStmt != nil {
 		if cerr := q.getEntityFileRelationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEntityFileRelationStmt: %w", cerr)
+		}
+	}
+	if q.getEntityNeighborsStmt != nil {
+		if cerr := q.getEntityNeighborsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEntityNeighborsStmt: %w", cerr)
 		}
 	}
 	if q.getEntityObservationStatsStmt != nil {
@@ -534,11 +626,6 @@ func (q *Queries) Close() error {
 	if q.getEntityRelationsStmt != nil {
 		if cerr := q.getEntityRelationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEntityRelationsStmt: %w", cerr)
-		}
-	}
-	if q.getEntityWithObservationsStmt != nil {
-		if cerr := q.getEntityWithObservationsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEntityWithObservationsStmt: %w", cerr)
 		}
 	}
 	if q.getFileStmt != nil {
@@ -581,9 +668,84 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getFilesWithoutEmbeddingsStmt: %w", cerr)
 		}
 	}
+	if q.getGraphEdgeAttrsStmt != nil {
+		if cerr := q.getGraphEdgeAttrsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphEdgeAttrsStmt: %w", cerr)
+		}
+	}
+	if q.getGraphEdgeProvenanceStmt != nil {
+		if cerr := q.getGraphEdgeProvenanceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphEdgeProvenanceStmt: %w", cerr)
+		}
+	}
+	if q.getGraphEntitiesByKindStmt != nil {
+		if cerr := q.getGraphEntitiesByKindStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphEntitiesByKindStmt: %w", cerr)
+		}
+	}
+	if q.getGraphEntitiesWithSummaryStmt != nil {
+		if cerr := q.getGraphEntitiesWithSummaryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphEntitiesWithSummaryStmt: %w", cerr)
+		}
+	}
+	if q.getGraphEntityStmt != nil {
+		if cerr := q.getGraphEntityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphEntityStmt: %w", cerr)
+		}
+	}
+	if q.getGraphEntityAttrsStmt != nil {
+		if cerr := q.getGraphEntityAttrsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphEntityAttrsStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgeStmt != nil {
+		if cerr := q.getGraphGraphEdgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgeStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgesAsOfStmt != nil {
+		if cerr := q.getGraphGraphEdgesAsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgesAsOfStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgesBetweenEntitiesStmt != nil {
+		if cerr := q.getGraphGraphEdgesBetweenEntitiesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgesBetweenEntitiesStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgesByRelationStmt != nil {
+		if cerr := q.getGraphGraphEdgesByRelationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgesByRelationStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgesBySourceStmt != nil {
+		if cerr := q.getGraphGraphEdgesBySourceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgesBySourceStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgesByTargetStmt != nil {
+		if cerr := q.getGraphGraphEdgesByTargetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgesByTargetStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgesByTimeRangeStmt != nil {
+		if cerr := q.getGraphGraphEdgesByTimeRangeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgesByTimeRangeStmt: %w", cerr)
+		}
+	}
+	if q.getGraphGraphEdgesWithValidityStmt != nil {
+		if cerr := q.getGraphGraphEdgesWithValidityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGraphGraphEdgesWithValidityStmt: %w", cerr)
+		}
+	}
 	if q.getHighConfidenceRelationsStmt != nil {
 		if cerr := q.getHighConfidenceRelationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getHighConfidenceRelationsStmt: %w", cerr)
+		}
+	}
+	if q.getInvalidatedGraphGraphEdgesStmt != nil {
+		if cerr := q.getInvalidatedGraphGraphEdgesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getInvalidatedGraphGraphEdgesStmt: %w", cerr)
 		}
 	}
 	if q.getLatestSnapshotStmt != nil {
@@ -741,9 +903,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getWorkspacesByActivityStmt: %w", cerr)
 		}
 	}
-	if q.listEntitiesStmt != nil {
-		if cerr := q.listEntitiesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listEntitiesStmt: %w", cerr)
+	if q.invalidateGraphEdgeStmt != nil {
+		if cerr := q.invalidateGraphEdgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing invalidateGraphEdgeStmt: %w", cerr)
 		}
 	}
 	if q.listFilesByDirectoryStmt != nil {
@@ -756,14 +918,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listFilesByWorkspaceStmt: %w", cerr)
 		}
 	}
+	if q.listGraphEntitiesStmt != nil {
+		if cerr := q.listGraphEntitiesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGraphEntitiesStmt: %w", cerr)
+		}
+	}
+	if q.listGraphGraphGraphEdgesStmt != nil {
+		if cerr := q.listGraphGraphGraphEdgesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGraphGraphGraphEdgesStmt: %w", cerr)
+		}
+	}
 	if q.listWorkspacesStmt != nil {
 		if cerr := q.listWorkspacesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listWorkspacesStmt: %w", cerr)
-		}
-	}
-	if q.searchEntitiesStmt != nil {
-		if cerr := q.searchEntitiesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing searchEntitiesStmt: %w", cerr)
 		}
 	}
 	if q.searchEntitiesByContentStmt != nil {
@@ -786,6 +953,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing searchFilesStmt: %w", cerr)
 		}
 	}
+	if q.searchGraphEntitiesFTSStmt != nil {
+		if cerr := q.searchGraphEntitiesFTSStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing searchGraphEntitiesFTSStmt: %w", cerr)
+		}
+	}
 	if q.searchObservationsStmt != nil {
 		if cerr := q.searchObservationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing searchObservationsStmt: %w", cerr)
@@ -796,11 +968,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing searchWorkspacesStmt: %w", cerr)
 		}
 	}
-	if q.updateEntityStmt != nil {
-		if cerr := q.updateEntityStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateEntityStmt: %w", cerr)
-		}
-	}
 	if q.updateEntityFileRelationStmt != nil {
 		if cerr := q.updateEntityFileRelationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateEntityFileRelationStmt: %w", cerr)
@@ -809,6 +976,31 @@ func (q *Queries) Close() error {
 	if q.updateFileStmt != nil {
 		if cerr := q.updateFileStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateFileStmt: %w", cerr)
+		}
+	}
+	if q.updateGraphEdgeStmt != nil {
+		if cerr := q.updateGraphEdgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGraphEdgeStmt: %w", cerr)
+		}
+	}
+	if q.updateGraphEdgeAttrsStmt != nil {
+		if cerr := q.updateGraphEdgeAttrsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGraphEdgeAttrsStmt: %w", cerr)
+		}
+	}
+	if q.updateGraphEdgeProvenanceStmt != nil {
+		if cerr := q.updateGraphEdgeProvenanceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGraphEdgeProvenanceStmt: %w", cerr)
+		}
+	}
+	if q.updateGraphEntityStmt != nil {
+		if cerr := q.updateGraphEntityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGraphEntityStmt: %w", cerr)
+		}
+	}
+	if q.updateGraphEntityAttrsStmt != nil {
+		if cerr := q.updateGraphEntityAttrsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGraphEntityAttrsStmt: %w", cerr)
 		}
 	}
 	if q.updateObservationStmt != nil {
@@ -858,211 +1050,259 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                                 DBTX
-	tx                                 *sql.Tx
-	batchCreateEntitiesStmt            *sql.Stmt
-	batchCreateEntityFileRelationsStmt *sql.Stmt
-	batchCreateFilesStmt               *sql.Stmt
-	batchCreateObservationsStmt        *sql.Stmt
-	batchCreateOperationsStmt          *sql.Stmt
-	batchCreateWorkspacesStmt          *sql.Stmt
-	batchDeleteEntitiesStmt            *sql.Stmt
-	batchDeleteFilesStmt               *sql.Stmt
-	batchDeleteObservationsStmt        *sql.Stmt
-	batchUpdateEntitiesStmt            *sql.Stmt
-	batchUpdateFilesStmt               *sql.Stmt
-	batchUpdateObservationsStmt        *sql.Stmt
-	batchUpdateRelationConfidenceStmt  *sql.Stmt
-	batchUpdateWorkspaceConfigsStmt    *sql.Stmt
-	bulkUpdateFileEmbeddingsStmt       *sql.Stmt
-	cleanupLowConfidenceRelationsStmt  *sql.Stmt
-	cleanupOldOperationsStmt           *sql.Stmt
-	createEntityStmt                   *sql.Stmt
-	createEntityFileRelationStmt       *sql.Stmt
-	createFileStmt                     *sql.Stmt
-	createObservationStmt              *sql.Stmt
-	createOperationStmt                *sql.Stmt
-	createSnapshotStmt                 *sql.Stmt
-	createWorkspaceStmt                *sql.Stmt
-	deleteEntityStmt                   *sql.Stmt
-	deleteEntityFileRelationStmt       *sql.Stmt
-	deleteEntityObservationsStmt       *sql.Stmt
-	deleteFileStmt                     *sql.Stmt
-	deleteObservationStmt              *sql.Stmt
-	deleteSnapshotStmt                 *sql.Stmt
-	deleteWorkspaceStmt                *sql.Stmt
-	getEntitiesByMetadataStmt          *sql.Stmt
-	getEntitiesByObservationCountStmt  *sql.Stmt
-	getEntitiesByTypeStmt              *sql.Stmt
-	getEntitiesWithEmbeddingsStmt      *sql.Stmt
-	getEntitiesWithStatsStmt           *sql.Stmt
-	getEntityStmt                      *sql.Stmt
-	getEntityFileNetworkStmt           *sql.Stmt
-	getEntityFileRelationStmt          *sql.Stmt
-	getEntityObservationStatsStmt      *sql.Stmt
-	getEntityObservationsStmt          *sql.Stmt
-	getEntityRelationsStmt             *sql.Stmt
-	getEntityWithObservationsStmt      *sql.Stmt
-	getFileStmt                        *sql.Stmt
-	getFileByPathStmt                  *sql.Stmt
-	getFileRelationsStmt               *sql.Stmt
-	getFileStatsByWorkspaceStmt        *sql.Stmt
-	getFilesBySizeRangeStmt            *sql.Stmt
-	getFilesForEntityTypeStmt          *sql.Stmt
-	getFilesWithEmbeddingsStmt         *sql.Stmt
-	getFilesWithoutEmbeddingsStmt      *sql.Stmt
-	getHighConfidenceRelationsStmt     *sql.Stmt
-	getLatestSnapshotStmt              *sql.Stmt
-	getObservationStmt                 *sql.Stmt
-	getObservationsByEntitiesStmt      *sql.Stmt
-	getObservationsByTimeRangeStmt     *sql.Stmt
-	getObservationsWithEmbeddingsStmt  *sql.Stmt
-	getOperationStmt                   *sql.Stmt
-	getOperationStatsStmt              *sql.Stmt
-	getOperationSummaryStmt            *sql.Stmt
-	getOperationsByTimeRangeStmt       *sql.Stmt
-	getOperationsByTypeStmt            *sql.Stmt
-	getOperationsByUserStmt            *sql.Stmt
-	getOrphanedRelationsStmt           *sql.Stmt
-	getRecentEntitiesStmt              *sql.Stmt
-	getRecentObservationsStmt          *sql.Stmt
-	getRecentOperationsStmt            *sql.Stmt
-	getRecentlyModifiedFilesStmt       *sql.Stmt
-	getRelationStatisticsStmt          *sql.Stmt
-	getRelationsByTypeStmt             *sql.Stmt
-	getSimilarEntitiesForFileStmt      *sql.Stmt
-	getSnapshotStmt                    *sql.Stmt
-	getTopRelatedFilesStmt             *sql.Stmt
-	getWorkspaceStmt                   *sql.Stmt
-	getWorkspaceActivityStmt           *sql.Stmt
-	getWorkspaceByPathStmt             *sql.Stmt
-	getWorkspaceFileDistributionStmt   *sql.Stmt
-	getWorkspaceOperationsStmt         *sql.Stmt
-	getWorkspaceSnapshotsStmt          *sql.Stmt
-	getWorkspaceSummaryStmt            *sql.Stmt
-	getWorkspaceTopFilesStmt           *sql.Stmt
-	getWorkspaceWithStatsStmt          *sql.Stmt
-	getWorkspacesByActivityStmt        *sql.Stmt
-	listEntitiesStmt                   *sql.Stmt
-	listFilesByDirectoryStmt           *sql.Stmt
-	listFilesByWorkspaceStmt           *sql.Stmt
-	listWorkspacesStmt                 *sql.Stmt
-	searchEntitiesStmt                 *sql.Stmt
-	searchEntitiesByContentStmt        *sql.Stmt
-	searchEntitiesByNameStmt           *sql.Stmt
-	searchEntitiesByTypeStmt           *sql.Stmt
-	searchFilesStmt                    *sql.Stmt
-	searchObservationsStmt             *sql.Stmt
-	searchWorkspacesStmt               *sql.Stmt
-	updateEntityStmt                   *sql.Stmt
-	updateEntityFileRelationStmt       *sql.Stmt
-	updateFileStmt                     *sql.Stmt
-	updateObservationStmt              *sql.Stmt
-	updateWorkspaceStmt                *sql.Stmt
+	db                                    DBTX
+	tx                                    *sql.Tx
+	batchCreateEntityFileRelationsStmt    *sql.Stmt
+	batchCreateFilesStmt                  *sql.Stmt
+	batchCreateObservationsStmt           *sql.Stmt
+	batchCreateOperationsStmt             *sql.Stmt
+	batchCreateWorkspacesStmt             *sql.Stmt
+	batchDeleteFilesStmt                  *sql.Stmt
+	batchDeleteObservationsStmt           *sql.Stmt
+	batchUpdateFilesStmt                  *sql.Stmt
+	batchUpdateObservationsStmt           *sql.Stmt
+	batchUpdateRelationConfidenceStmt     *sql.Stmt
+	batchUpdateWorkspaceConfigsStmt       *sql.Stmt
+	bulkUpdateFileEmbeddingsStmt          *sql.Stmt
+	cleanupLowConfidenceRelationsStmt     *sql.Stmt
+	cleanupOldOperationsStmt              *sql.Stmt
+	countGraphEntitiesStmt                *sql.Stmt
+	countGraphEntitiesByKindStmt          *sql.Stmt
+	countGraphGraphEdgesStmt              *sql.Stmt
+	countGraphGraphEdgesByRelationStmt    *sql.Stmt
+	countGraphGraphEdgesBySourceStmt      *sql.Stmt
+	countGraphGraphEdgesByTargetStmt      *sql.Stmt
+	createEntityFileRelationStmt          *sql.Stmt
+	createFileStmt                        *sql.Stmt
+	createGraphEntityStmt                 *sql.Stmt
+	createGraphGraphEdgeStmt              *sql.Stmt
+	createObservationStmt                 *sql.Stmt
+	createOperationStmt                   *sql.Stmt
+	createSnapshotStmt                    *sql.Stmt
+	createWorkspaceStmt                   *sql.Stmt
+	deleteEntityFileRelationStmt          *sql.Stmt
+	deleteEntityObservationsStmt          *sql.Stmt
+	deleteFileStmt                        *sql.Stmt
+	deleteGraphEdgeStmt                   *sql.Stmt
+	deleteGraphEntityStmt                 *sql.Stmt
+	deleteObservationStmt                 *sql.Stmt
+	deleteSnapshotStmt                    *sql.Stmt
+	deleteWorkspaceStmt                   *sql.Stmt
+	getCurrentGraphGraphEdgesStmt         *sql.Stmt
+	getEntitiesByMetadataStmt             *sql.Stmt
+	getEntitiesByObservationCountStmt     *sql.Stmt
+	getEntitiesWithEmbeddingsStmt         *sql.Stmt
+	getEntityFileNetworkStmt              *sql.Stmt
+	getEntityFileRelationStmt             *sql.Stmt
+	getEntityNeighborsStmt                *sql.Stmt
+	getEntityObservationStatsStmt         *sql.Stmt
+	getEntityObservationsStmt             *sql.Stmt
+	getEntityRelationsStmt                *sql.Stmt
+	getFileStmt                           *sql.Stmt
+	getFileByPathStmt                     *sql.Stmt
+	getFileRelationsStmt                  *sql.Stmt
+	getFileStatsByWorkspaceStmt           *sql.Stmt
+	getFilesBySizeRangeStmt               *sql.Stmt
+	getFilesForEntityTypeStmt             *sql.Stmt
+	getFilesWithEmbeddingsStmt            *sql.Stmt
+	getFilesWithoutEmbeddingsStmt         *sql.Stmt
+	getGraphEdgeAttrsStmt                 *sql.Stmt
+	getGraphEdgeProvenanceStmt            *sql.Stmt
+	getGraphEntitiesByKindStmt            *sql.Stmt
+	getGraphEntitiesWithSummaryStmt       *sql.Stmt
+	getGraphEntityStmt                    *sql.Stmt
+	getGraphEntityAttrsStmt               *sql.Stmt
+	getGraphGraphEdgeStmt                 *sql.Stmt
+	getGraphGraphEdgesAsOfStmt            *sql.Stmt
+	getGraphGraphEdgesBetweenEntitiesStmt *sql.Stmt
+	getGraphGraphEdgesByRelationStmt      *sql.Stmt
+	getGraphGraphEdgesBySourceStmt        *sql.Stmt
+	getGraphGraphEdgesByTargetStmt        *sql.Stmt
+	getGraphGraphEdgesByTimeRangeStmt     *sql.Stmt
+	getGraphGraphEdgesWithValidityStmt    *sql.Stmt
+	getHighConfidenceRelationsStmt        *sql.Stmt
+	getInvalidatedGraphGraphEdgesStmt     *sql.Stmt
+	getLatestSnapshotStmt                 *sql.Stmt
+	getObservationStmt                    *sql.Stmt
+	getObservationsByEntitiesStmt         *sql.Stmt
+	getObservationsByTimeRangeStmt        *sql.Stmt
+	getObservationsWithEmbeddingsStmt     *sql.Stmt
+	getOperationStmt                      *sql.Stmt
+	getOperationStatsStmt                 *sql.Stmt
+	getOperationSummaryStmt               *sql.Stmt
+	getOperationsByTimeRangeStmt          *sql.Stmt
+	getOperationsByTypeStmt               *sql.Stmt
+	getOperationsByUserStmt               *sql.Stmt
+	getOrphanedRelationsStmt              *sql.Stmt
+	getRecentEntitiesStmt                 *sql.Stmt
+	getRecentObservationsStmt             *sql.Stmt
+	getRecentOperationsStmt               *sql.Stmt
+	getRecentlyModifiedFilesStmt          *sql.Stmt
+	getRelationStatisticsStmt             *sql.Stmt
+	getRelationsByTypeStmt                *sql.Stmt
+	getSimilarEntitiesForFileStmt         *sql.Stmt
+	getSnapshotStmt                       *sql.Stmt
+	getTopRelatedFilesStmt                *sql.Stmt
+	getWorkspaceStmt                      *sql.Stmt
+	getWorkspaceActivityStmt              *sql.Stmt
+	getWorkspaceByPathStmt                *sql.Stmt
+	getWorkspaceFileDistributionStmt      *sql.Stmt
+	getWorkspaceOperationsStmt            *sql.Stmt
+	getWorkspaceSnapshotsStmt             *sql.Stmt
+	getWorkspaceSummaryStmt               *sql.Stmt
+	getWorkspaceTopFilesStmt              *sql.Stmt
+	getWorkspaceWithStatsStmt             *sql.Stmt
+	getWorkspacesByActivityStmt           *sql.Stmt
+	invalidateGraphEdgeStmt               *sql.Stmt
+	listFilesByDirectoryStmt              *sql.Stmt
+	listFilesByWorkspaceStmt              *sql.Stmt
+	listGraphEntitiesStmt                 *sql.Stmt
+	listGraphGraphGraphEdgesStmt          *sql.Stmt
+	listWorkspacesStmt                    *sql.Stmt
+	searchEntitiesByContentStmt           *sql.Stmt
+	searchEntitiesByNameStmt              *sql.Stmt
+	searchEntitiesByTypeStmt              *sql.Stmt
+	searchFilesStmt                       *sql.Stmt
+	searchGraphEntitiesFTSStmt            *sql.Stmt
+	searchObservationsStmt                *sql.Stmt
+	searchWorkspacesStmt                  *sql.Stmt
+	updateEntityFileRelationStmt          *sql.Stmt
+	updateFileStmt                        *sql.Stmt
+	updateGraphEdgeStmt                   *sql.Stmt
+	updateGraphEdgeAttrsStmt              *sql.Stmt
+	updateGraphEdgeProvenanceStmt         *sql.Stmt
+	updateGraphEntityStmt                 *sql.Stmt
+	updateGraphEntityAttrsStmt            *sql.Stmt
+	updateObservationStmt                 *sql.Stmt
+	updateWorkspaceStmt                   *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                                 tx,
-		tx:                                 tx,
-		batchCreateEntitiesStmt:            q.batchCreateEntitiesStmt,
-		batchCreateEntityFileRelationsStmt: q.batchCreateEntityFileRelationsStmt,
-		batchCreateFilesStmt:               q.batchCreateFilesStmt,
-		batchCreateObservationsStmt:        q.batchCreateObservationsStmt,
-		batchCreateOperationsStmt:          q.batchCreateOperationsStmt,
-		batchCreateWorkspacesStmt:          q.batchCreateWorkspacesStmt,
-		batchDeleteEntitiesStmt:            q.batchDeleteEntitiesStmt,
-		batchDeleteFilesStmt:               q.batchDeleteFilesStmt,
-		batchDeleteObservationsStmt:        q.batchDeleteObservationsStmt,
-		batchUpdateEntitiesStmt:            q.batchUpdateEntitiesStmt,
-		batchUpdateFilesStmt:               q.batchUpdateFilesStmt,
-		batchUpdateObservationsStmt:        q.batchUpdateObservationsStmt,
-		batchUpdateRelationConfidenceStmt:  q.batchUpdateRelationConfidenceStmt,
-		batchUpdateWorkspaceConfigsStmt:    q.batchUpdateWorkspaceConfigsStmt,
-		bulkUpdateFileEmbeddingsStmt:       q.bulkUpdateFileEmbeddingsStmt,
-		cleanupLowConfidenceRelationsStmt:  q.cleanupLowConfidenceRelationsStmt,
-		cleanupOldOperationsStmt:           q.cleanupOldOperationsStmt,
-		createEntityStmt:                   q.createEntityStmt,
-		createEntityFileRelationStmt:       q.createEntityFileRelationStmt,
-		createFileStmt:                     q.createFileStmt,
-		createObservationStmt:              q.createObservationStmt,
-		createOperationStmt:                q.createOperationStmt,
-		createSnapshotStmt:                 q.createSnapshotStmt,
-		createWorkspaceStmt:                q.createWorkspaceStmt,
-		deleteEntityStmt:                   q.deleteEntityStmt,
-		deleteEntityFileRelationStmt:       q.deleteEntityFileRelationStmt,
-		deleteEntityObservationsStmt:       q.deleteEntityObservationsStmt,
-		deleteFileStmt:                     q.deleteFileStmt,
-		deleteObservationStmt:              q.deleteObservationStmt,
-		deleteSnapshotStmt:                 q.deleteSnapshotStmt,
-		deleteWorkspaceStmt:                q.deleteWorkspaceStmt,
-		getEntitiesByMetadataStmt:          q.getEntitiesByMetadataStmt,
-		getEntitiesByObservationCountStmt:  q.getEntitiesByObservationCountStmt,
-		getEntitiesByTypeStmt:              q.getEntitiesByTypeStmt,
-		getEntitiesWithEmbeddingsStmt:      q.getEntitiesWithEmbeddingsStmt,
-		getEntitiesWithStatsStmt:           q.getEntitiesWithStatsStmt,
-		getEntityStmt:                      q.getEntityStmt,
-		getEntityFileNetworkStmt:           q.getEntityFileNetworkStmt,
-		getEntityFileRelationStmt:          q.getEntityFileRelationStmt,
-		getEntityObservationStatsStmt:      q.getEntityObservationStatsStmt,
-		getEntityObservationsStmt:          q.getEntityObservationsStmt,
-		getEntityRelationsStmt:             q.getEntityRelationsStmt,
-		getEntityWithObservationsStmt:      q.getEntityWithObservationsStmt,
-		getFileStmt:                        q.getFileStmt,
-		getFileByPathStmt:                  q.getFileByPathStmt,
-		getFileRelationsStmt:               q.getFileRelationsStmt,
-		getFileStatsByWorkspaceStmt:        q.getFileStatsByWorkspaceStmt,
-		getFilesBySizeRangeStmt:            q.getFilesBySizeRangeStmt,
-		getFilesForEntityTypeStmt:          q.getFilesForEntityTypeStmt,
-		getFilesWithEmbeddingsStmt:         q.getFilesWithEmbeddingsStmt,
-		getFilesWithoutEmbeddingsStmt:      q.getFilesWithoutEmbeddingsStmt,
-		getHighConfidenceRelationsStmt:     q.getHighConfidenceRelationsStmt,
-		getLatestSnapshotStmt:              q.getLatestSnapshotStmt,
-		getObservationStmt:                 q.getObservationStmt,
-		getObservationsByEntitiesStmt:      q.getObservationsByEntitiesStmt,
-		getObservationsByTimeRangeStmt:     q.getObservationsByTimeRangeStmt,
-		getObservationsWithEmbeddingsStmt:  q.getObservationsWithEmbeddingsStmt,
-		getOperationStmt:                   q.getOperationStmt,
-		getOperationStatsStmt:              q.getOperationStatsStmt,
-		getOperationSummaryStmt:            q.getOperationSummaryStmt,
-		getOperationsByTimeRangeStmt:       q.getOperationsByTimeRangeStmt,
-		getOperationsByTypeStmt:            q.getOperationsByTypeStmt,
-		getOperationsByUserStmt:            q.getOperationsByUserStmt,
-		getOrphanedRelationsStmt:           q.getOrphanedRelationsStmt,
-		getRecentEntitiesStmt:              q.getRecentEntitiesStmt,
-		getRecentObservationsStmt:          q.getRecentObservationsStmt,
-		getRecentOperationsStmt:            q.getRecentOperationsStmt,
-		getRecentlyModifiedFilesStmt:       q.getRecentlyModifiedFilesStmt,
-		getRelationStatisticsStmt:          q.getRelationStatisticsStmt,
-		getRelationsByTypeStmt:             q.getRelationsByTypeStmt,
-		getSimilarEntitiesForFileStmt:      q.getSimilarEntitiesForFileStmt,
-		getSnapshotStmt:                    q.getSnapshotStmt,
-		getTopRelatedFilesStmt:             q.getTopRelatedFilesStmt,
-		getWorkspaceStmt:                   q.getWorkspaceStmt,
-		getWorkspaceActivityStmt:           q.getWorkspaceActivityStmt,
-		getWorkspaceByPathStmt:             q.getWorkspaceByPathStmt,
-		getWorkspaceFileDistributionStmt:   q.getWorkspaceFileDistributionStmt,
-		getWorkspaceOperationsStmt:         q.getWorkspaceOperationsStmt,
-		getWorkspaceSnapshotsStmt:          q.getWorkspaceSnapshotsStmt,
-		getWorkspaceSummaryStmt:            q.getWorkspaceSummaryStmt,
-		getWorkspaceTopFilesStmt:           q.getWorkspaceTopFilesStmt,
-		getWorkspaceWithStatsStmt:          q.getWorkspaceWithStatsStmt,
-		getWorkspacesByActivityStmt:        q.getWorkspacesByActivityStmt,
-		listEntitiesStmt:                   q.listEntitiesStmt,
-		listFilesByDirectoryStmt:           q.listFilesByDirectoryStmt,
-		listFilesByWorkspaceStmt:           q.listFilesByWorkspaceStmt,
-		listWorkspacesStmt:                 q.listWorkspacesStmt,
-		searchEntitiesStmt:                 q.searchEntitiesStmt,
-		searchEntitiesByContentStmt:        q.searchEntitiesByContentStmt,
-		searchEntitiesByNameStmt:           q.searchEntitiesByNameStmt,
-		searchEntitiesByTypeStmt:           q.searchEntitiesByTypeStmt,
-		searchFilesStmt:                    q.searchFilesStmt,
-		searchObservationsStmt:             q.searchObservationsStmt,
-		searchWorkspacesStmt:               q.searchWorkspacesStmt,
-		updateEntityStmt:                   q.updateEntityStmt,
-		updateEntityFileRelationStmt:       q.updateEntityFileRelationStmt,
-		updateFileStmt:                     q.updateFileStmt,
-		updateObservationStmt:              q.updateObservationStmt,
-		updateWorkspaceStmt:                q.updateWorkspaceStmt,
+		db:                                    tx,
+		tx:                                    tx,
+		batchCreateEntityFileRelationsStmt:    q.batchCreateEntityFileRelationsStmt,
+		batchCreateFilesStmt:                  q.batchCreateFilesStmt,
+		batchCreateObservationsStmt:           q.batchCreateObservationsStmt,
+		batchCreateOperationsStmt:             q.batchCreateOperationsStmt,
+		batchCreateWorkspacesStmt:             q.batchCreateWorkspacesStmt,
+		batchDeleteFilesStmt:                  q.batchDeleteFilesStmt,
+		batchDeleteObservationsStmt:           q.batchDeleteObservationsStmt,
+		batchUpdateFilesStmt:                  q.batchUpdateFilesStmt,
+		batchUpdateObservationsStmt:           q.batchUpdateObservationsStmt,
+		batchUpdateRelationConfidenceStmt:     q.batchUpdateRelationConfidenceStmt,
+		batchUpdateWorkspaceConfigsStmt:       q.batchUpdateWorkspaceConfigsStmt,
+		bulkUpdateFileEmbeddingsStmt:          q.bulkUpdateFileEmbeddingsStmt,
+		cleanupLowConfidenceRelationsStmt:     q.cleanupLowConfidenceRelationsStmt,
+		cleanupOldOperationsStmt:              q.cleanupOldOperationsStmt,
+		countGraphEntitiesStmt:                q.countGraphEntitiesStmt,
+		countGraphEntitiesByKindStmt:          q.countGraphEntitiesByKindStmt,
+		countGraphGraphEdgesStmt:              q.countGraphGraphEdgesStmt,
+		countGraphGraphEdgesByRelationStmt:    q.countGraphGraphEdgesByRelationStmt,
+		countGraphGraphEdgesBySourceStmt:      q.countGraphGraphEdgesBySourceStmt,
+		countGraphGraphEdgesByTargetStmt:      q.countGraphGraphEdgesByTargetStmt,
+		createEntityFileRelationStmt:          q.createEntityFileRelationStmt,
+		createFileStmt:                        q.createFileStmt,
+		createGraphEntityStmt:                 q.createGraphEntityStmt,
+		createGraphGraphEdgeStmt:              q.createGraphGraphEdgeStmt,
+		createObservationStmt:                 q.createObservationStmt,
+		createOperationStmt:                   q.createOperationStmt,
+		createSnapshotStmt:                    q.createSnapshotStmt,
+		createWorkspaceStmt:                   q.createWorkspaceStmt,
+		deleteEntityFileRelationStmt:          q.deleteEntityFileRelationStmt,
+		deleteEntityObservationsStmt:          q.deleteEntityObservationsStmt,
+		deleteFileStmt:                        q.deleteFileStmt,
+		deleteGraphEdgeStmt:                   q.deleteGraphEdgeStmt,
+		deleteGraphEntityStmt:                 q.deleteGraphEntityStmt,
+		deleteObservationStmt:                 q.deleteObservationStmt,
+		deleteSnapshotStmt:                    q.deleteSnapshotStmt,
+		deleteWorkspaceStmt:                   q.deleteWorkspaceStmt,
+		getCurrentGraphGraphEdgesStmt:         q.getCurrentGraphGraphEdgesStmt,
+		getEntitiesByMetadataStmt:             q.getEntitiesByMetadataStmt,
+		getEntitiesByObservationCountStmt:     q.getEntitiesByObservationCountStmt,
+		getEntitiesWithEmbeddingsStmt:         q.getEntitiesWithEmbeddingsStmt,
+		getEntityFileNetworkStmt:              q.getEntityFileNetworkStmt,
+		getEntityFileRelationStmt:             q.getEntityFileRelationStmt,
+		getEntityNeighborsStmt:                q.getEntityNeighborsStmt,
+		getEntityObservationStatsStmt:         q.getEntityObservationStatsStmt,
+		getEntityObservationsStmt:             q.getEntityObservationsStmt,
+		getEntityRelationsStmt:                q.getEntityRelationsStmt,
+		getFileStmt:                           q.getFileStmt,
+		getFileByPathStmt:                     q.getFileByPathStmt,
+		getFileRelationsStmt:                  q.getFileRelationsStmt,
+		getFileStatsByWorkspaceStmt:           q.getFileStatsByWorkspaceStmt,
+		getFilesBySizeRangeStmt:               q.getFilesBySizeRangeStmt,
+		getFilesForEntityTypeStmt:             q.getFilesForEntityTypeStmt,
+		getFilesWithEmbeddingsStmt:            q.getFilesWithEmbeddingsStmt,
+		getFilesWithoutEmbeddingsStmt:         q.getFilesWithoutEmbeddingsStmt,
+		getGraphEdgeAttrsStmt:                 q.getGraphEdgeAttrsStmt,
+		getGraphEdgeProvenanceStmt:            q.getGraphEdgeProvenanceStmt,
+		getGraphEntitiesByKindStmt:            q.getGraphEntitiesByKindStmt,
+		getGraphEntitiesWithSummaryStmt:       q.getGraphEntitiesWithSummaryStmt,
+		getGraphEntityStmt:                    q.getGraphEntityStmt,
+		getGraphEntityAttrsStmt:               q.getGraphEntityAttrsStmt,
+		getGraphGraphEdgeStmt:                 q.getGraphGraphEdgeStmt,
+		getGraphGraphEdgesAsOfStmt:            q.getGraphGraphEdgesAsOfStmt,
+		getGraphGraphEdgesBetweenEntitiesStmt: q.getGraphGraphEdgesBetweenEntitiesStmt,
+		getGraphGraphEdgesByRelationStmt:      q.getGraphGraphEdgesByRelationStmt,
+		getGraphGraphEdgesBySourceStmt:        q.getGraphGraphEdgesBySourceStmt,
+		getGraphGraphEdgesByTargetStmt:        q.getGraphGraphEdgesByTargetStmt,
+		getGraphGraphEdgesByTimeRangeStmt:     q.getGraphGraphEdgesByTimeRangeStmt,
+		getGraphGraphEdgesWithValidityStmt:    q.getGraphGraphEdgesWithValidityStmt,
+		getHighConfidenceRelationsStmt:        q.getHighConfidenceRelationsStmt,
+		getInvalidatedGraphGraphEdgesStmt:     q.getInvalidatedGraphGraphEdgesStmt,
+		getLatestSnapshotStmt:                 q.getLatestSnapshotStmt,
+		getObservationStmt:                    q.getObservationStmt,
+		getObservationsByEntitiesStmt:         q.getObservationsByEntitiesStmt,
+		getObservationsByTimeRangeStmt:        q.getObservationsByTimeRangeStmt,
+		getObservationsWithEmbeddingsStmt:     q.getObservationsWithEmbeddingsStmt,
+		getOperationStmt:                      q.getOperationStmt,
+		getOperationStatsStmt:                 q.getOperationStatsStmt,
+		getOperationSummaryStmt:               q.getOperationSummaryStmt,
+		getOperationsByTimeRangeStmt:          q.getOperationsByTimeRangeStmt,
+		getOperationsByTypeStmt:               q.getOperationsByTypeStmt,
+		getOperationsByUserStmt:               q.getOperationsByUserStmt,
+		getOrphanedRelationsStmt:              q.getOrphanedRelationsStmt,
+		getRecentEntitiesStmt:                 q.getRecentEntitiesStmt,
+		getRecentObservationsStmt:             q.getRecentObservationsStmt,
+		getRecentOperationsStmt:               q.getRecentOperationsStmt,
+		getRecentlyModifiedFilesStmt:          q.getRecentlyModifiedFilesStmt,
+		getRelationStatisticsStmt:             q.getRelationStatisticsStmt,
+		getRelationsByTypeStmt:                q.getRelationsByTypeStmt,
+		getSimilarEntitiesForFileStmt:         q.getSimilarEntitiesForFileStmt,
+		getSnapshotStmt:                       q.getSnapshotStmt,
+		getTopRelatedFilesStmt:                q.getTopRelatedFilesStmt,
+		getWorkspaceStmt:                      q.getWorkspaceStmt,
+		getWorkspaceActivityStmt:              q.getWorkspaceActivityStmt,
+		getWorkspaceByPathStmt:                q.getWorkspaceByPathStmt,
+		getWorkspaceFileDistributionStmt:      q.getWorkspaceFileDistributionStmt,
+		getWorkspaceOperationsStmt:            q.getWorkspaceOperationsStmt,
+		getWorkspaceSnapshotsStmt:             q.getWorkspaceSnapshotsStmt,
+		getWorkspaceSummaryStmt:               q.getWorkspaceSummaryStmt,
+		getWorkspaceTopFilesStmt:              q.getWorkspaceTopFilesStmt,
+		getWorkspaceWithStatsStmt:             q.getWorkspaceWithStatsStmt,
+		getWorkspacesByActivityStmt:           q.getWorkspacesByActivityStmt,
+		invalidateGraphEdgeStmt:               q.invalidateGraphEdgeStmt,
+		listFilesByDirectoryStmt:              q.listFilesByDirectoryStmt,
+		listFilesByWorkspaceStmt:              q.listFilesByWorkspaceStmt,
+		listGraphEntitiesStmt:                 q.listGraphEntitiesStmt,
+		listGraphGraphGraphEdgesStmt:          q.listGraphGraphGraphEdgesStmt,
+		listWorkspacesStmt:                    q.listWorkspacesStmt,
+		searchEntitiesByContentStmt:           q.searchEntitiesByContentStmt,
+		searchEntitiesByNameStmt:              q.searchEntitiesByNameStmt,
+		searchEntitiesByTypeStmt:              q.searchEntitiesByTypeStmt,
+		searchFilesStmt:                       q.searchFilesStmt,
+		searchGraphEntitiesFTSStmt:            q.searchGraphEntitiesFTSStmt,
+		searchObservationsStmt:                q.searchObservationsStmt,
+		searchWorkspacesStmt:                  q.searchWorkspacesStmt,
+		updateEntityFileRelationStmt:          q.updateEntityFileRelationStmt,
+		updateFileStmt:                        q.updateFileStmt,
+		updateGraphEdgeStmt:                   q.updateGraphEdgeStmt,
+		updateGraphEdgeAttrsStmt:              q.updateGraphEdgeAttrsStmt,
+		updateGraphEdgeProvenanceStmt:         q.updateGraphEdgeProvenanceStmt,
+		updateGraphEntityStmt:                 q.updateGraphEntityStmt,
+		updateGraphEntityAttrsStmt:            q.updateGraphEntityAttrsStmt,
+		updateObservationStmt:                 q.updateObservationStmt,
+		updateWorkspaceStmt:                   q.updateWorkspaceStmt,
 	}
 }

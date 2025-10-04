@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pressly/goose/v3"
 	_ "github.com/tursodatabase/go-libsql"
 )
 
@@ -24,8 +25,6 @@ type DBManager struct {
 	config        *Config
 	dbs           map[string]*sql.DB
 	mu            sync.RWMutex
-	stmtCache     map[string]map[string]*sql.Stmt
-	stmtMu        sync.RWMutex
 	capsByProject map[string]capFlags
 	capMu         sync.RWMutex        // mutex for capabilities
 	queries       map[string]*Queries // sqlc generated queriers
@@ -40,7 +39,6 @@ func NewDBManager(config *Config) (*DBManager, error) {
 	manager := &DBManager{
 		config:        config,
 		dbs:           make(map[string]*sql.DB),
-		stmtCache:     make(map[string]map[string]*sql.Stmt),
 		capsByProject: make(map[string]capFlags),
 		queries:       make(map[string]*Queries),
 	}
@@ -55,18 +53,8 @@ func NewDBManager(config *Config) (*DBManager, error) {
 	return manager, nil
 }
 
-// Close closes all cached prepared statements and DBs.
+// Close closes all database connections.
 func (dm *DBManager) Close() error {
-	// close statements
-	dm.stmtMu.Lock()
-	for _, cache := range dm.stmtCache {
-		for _, stmt := range cache {
-			_ = stmt.Close()
-		}
-	}
-	dm.stmtCache = make(map[string]map[string]*sql.Stmt)
-	dm.stmtMu.Unlock()
-
 	// close dbs
 	dm.mu.Lock()
 	for name, db := range dm.dbs {
@@ -138,19 +126,8 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to initialize database for project %s: %w", projectName, err)
 	}
 
-	// pool tuning
-	if dm.config.MaxOpenConns > 0 {
-		newDb.SetMaxOpenConns(dm.config.MaxOpenConns)
-	}
-	if dm.config.MaxIdleConns > 0 {
-		newDb.SetMaxIdleConns(dm.config.MaxIdleConns)
-	}
-	if dm.config.ConnMaxIdleSec > 0 {
-		newDb.SetConnMaxIdleTime(time.Duration(dm.config.ConnMaxIdleSec) * time.Second)
-	}
-	if dm.config.ConnMaxLifeSec > 0 {
-		newDb.SetConnMaxLifetime(time.Duration(dm.config.ConnMaxLifeSec) * time.Second)
-	}
+	// Configure connection pooling for optimal performance
+	dm.configureConnectionPooling(newDb)
 
 	// reconcile embedding dims with DB if needed
 	if dbDims := detectDBEmbeddingDims(newDb); dbDims > 0 && dbDims != dm.config.EmbeddingDims {
@@ -159,15 +136,18 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	}
 
 	dm.dbs[projectName] = newDb
-	if _, ok := dm.stmtCache[projectName]; !ok {
-		dm.stmtCache[projectName] = make(map[string]*sql.Stmt)
-	}
 
 	// detect caps
 	dm.detectCapabilitiesForProject(context.Background(), projectName, newDb)
 
-	// initialize sqlc querier
-	dm.queries[projectName] = New(newDb)
+	// prepare sqlc querier with prepared statements
+	ctx := context.Background()
+	querier, err := Prepare(ctx, newDb)
+	if err != nil {
+		newDb.Close()
+		return nil, fmt.Errorf("failed to prepare sqlc querier: %w", err)
+	}
+	dm.queries[projectName] = querier
 
 	_ = newDb.Stats() // touch stats (future metrics)
 	return newDb, nil
@@ -199,37 +179,147 @@ func detectDBEmbeddingDims(db *sql.DB) int {
 	return 0
 }
 
-// initialize creates schema using goose
+// initialize creates schema using goose and prepares sqlc querier
 func (dm *DBManager) initialize(db *sql.DB) error {
-	// For now, rely on goose migrations for schema initialization
-	// This will be called after goose has run migrations
+	// Run goose migrations to ensure schema is up to date
+	if err := dm.runGooseMigrations(db); err != nil {
+		return fmt.Errorf("failed to run goose migrations: %w", err)
+	}
+
+	// Configure PRAGMA settings for optimal performance
+	if err := dm.configurePragmaSettings(db); err != nil {
+		return fmt.Errorf("failed to configure PRAGMA settings: %w", err)
+	}
+
 	return nil
 }
 
-// getPreparedStmt returns or prepares and caches a statement for the given project DB
-func (dm *DBManager) getPreparedStmt(ctx context.Context, projectName string, db *sql.DB, sqlText string) (*sql.Stmt, error) {
-	// fast path read
-	dm.stmtMu.RLock()
-	if projCache, ok := dm.stmtCache[projectName]; ok {
-		if stmt, ok2 := projCache[sqlText]; ok2 {
-			dm.stmtMu.RUnlock()
-			return stmt, nil
+// runGooseMigrations runs goose migrations on the provided database
+func (dm *DBManager) runGooseMigrations(db *sql.DB) error {
+	// Use absolute path to migrations directory
+	// Get the current working directory and construct the path
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	// Check if we're in a subdirectory and need to go up to project root
+	migrationsPath := filepath.Join(wd, "vvfs", "memory", "migrations")
+
+	// If the path doesn't exist, try going up levels (for test execution from subdirs)
+	if _, err := os.Stat(migrationsPath); os.IsNotExist(err) {
+		// Try going up one level
+		migrationsPath = filepath.Join(wd, "..", "vvfs", "memory", "migrations")
+		if _, err := os.Stat(migrationsPath); os.IsNotExist(err) {
+			// Try going up two levels
+			migrationsPath = filepath.Join(wd, "..", "..", "vvfs", "memory", "migrations")
 		}
 	}
-	dm.stmtMu.RUnlock()
 
-	// prepare and store
-	stmt, err := db.PrepareContext(ctx, sqlText)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+	// Set goose dialect to SQLite (required for proper migration execution)
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}
-	dm.stmtMu.Lock()
-	if _, ok := dm.stmtCache[projectName]; !ok {
-		dm.stmtCache[projectName] = make(map[string]*sql.Stmt)
+
+	// Run all pending migrations
+	if err := goose.Up(db, migrationsPath); err != nil {
+		return fmt.Errorf("failed to run goose migrations: %w", err)
 	}
-	dm.stmtCache[projectName][sqlText] = stmt
-	dm.stmtMu.Unlock()
-	return stmt, nil
+	return nil
+}
+
+// configurePragmaSettings applies PRAGMA settings to the database
+func (dm *DBManager) configurePragmaSettings(db *sql.DB) error {
+	// Journal mode (WAL, DELETE, etc.)
+	if dm.config.JournalMode != "" {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA journal_mode = %s", dm.config.JournalMode)); err != nil {
+			return fmt.Errorf("failed to set journal_mode: %w", err)
+		}
+	}
+
+	// Synchronous mode (NORMAL, FULL, OFF)
+	if dm.config.SyncMode != "" {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA synchronous = %s", dm.config.SyncMode)); err != nil {
+			return fmt.Errorf("failed to set synchronous: %w", err)
+		}
+	}
+
+	// Cache size (negative values in KB, positive in pages)
+	if dm.config.CacheSize != 0 {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA cache_size = %d", dm.config.CacheSize)); err != nil {
+			return fmt.Errorf("failed to set cache_size: %w", err)
+		}
+	}
+
+	// Temporary storage location
+	if dm.config.TempStore != "" {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA temp_store = %s", dm.config.TempStore)); err != nil {
+			return fmt.Errorf("failed to set temp_store: %w", err)
+		}
+	}
+
+	// Additional performance PRAGMAs
+	pragmaSettings := []struct {
+		name  string
+		value string
+	}{
+		{"mmap_size", "268435456"},     // 256MB memory map
+		{"wal_autocheckpoint", "1000"}, // Checkpoint every 1000 pages
+		{"busy_timeout", "5000"},       // 5 second timeout
+		{"foreign_keys", "ON"},         // Enable foreign key constraints
+	}
+
+	for _, setting := range pragmaSettings {
+		// Some PRAGMA statements return values, so we need to handle them differently
+		query := fmt.Sprintf("PRAGMA %s = %s", setting.name, setting.value)
+		if _, err := db.Exec(query); err != nil {
+			// If Exec fails due to returning rows, try Query instead
+			if strings.Contains(err.Error(), "returned rows") {
+				if _, err := db.Query(query); err != nil {
+					return fmt.Errorf("failed to set %s: %w", setting.name, err)
+				}
+			} else {
+				return fmt.Errorf("failed to set %s: %w", setting.name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// configureConnectionPooling sets up optimal connection pooling parameters
+func (dm *DBManager) configureConnectionPooling(db *sql.DB) {
+	// Set max open connections (default: 25 for SQLite)
+	maxOpen := dm.config.MaxOpenConns
+	if maxOpen <= 0 {
+		maxOpen = 25 // SQLite default
+	}
+	db.SetMaxOpenConns(maxOpen)
+
+	// Set max idle connections (default: 25 for SQLite)
+	maxIdle := dm.config.MaxIdleConns
+	if maxIdle <= 0 {
+		maxIdle = 25 // SQLite default
+	}
+	db.SetMaxIdleConns(maxIdle)
+
+	// Set connection max idle time (default: 5 minutes)
+	idleTime := time.Duration(dm.config.ConnMaxIdleSec) * time.Second
+	if idleTime <= 0 {
+		idleTime = 5 * time.Minute
+	}
+	db.SetConnMaxIdleTime(idleTime)
+
+	// Set connection max lifetime (default: 1 hour)
+	lifeTime := time.Duration(dm.config.ConnMaxLifeSec) * time.Second
+	if lifeTime <= 0 {
+		lifeTime = time.Hour
+	}
+	db.SetConnMaxLifetime(lifeTime)
+
+	// Log connection pool configuration
+	log.Printf("Connection pool configured: max_open=%d, max_idle=%d, max_idle_time=%v, max_lifetime=%v",
+		maxOpen, maxIdle, idleTime, lifeTime)
 }
 
 // GetQuerier returns the sqlc querier for a project
@@ -248,4 +338,88 @@ func (dm *DBManager) GetQuerier(projectName string) (*Queries, error) {
 		dm.mu.RUnlock()
 	}
 	return querier, nil
+}
+
+// WithTx executes a function within a database transaction
+func (dm *DBManager) WithTx(ctx context.Context, projectName string, fn func(*Queries) error) error {
+	// Get the base querier
+	querier, err := dm.GetQuerier(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to get querier: %w", err)
+	}
+
+	// Get the underlying database connection
+	dm.mu.RLock()
+	db, ok := dm.dbs[projectName]
+	dm.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("database connection not found for project: %s", projectName)
+	}
+
+	// Begin transaction
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Create querier with transaction
+	txQuerier := querier.WithTx(tx)
+
+	// Execute the function
+	if err := fn(txQuerier); err != nil {
+		// Rollback on error
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("transaction failed and rollback failed: %v (original error: %w)", rollbackErr, err)
+		}
+		return err
+	}
+
+	// Commit on success
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// WithTxReadOnly executes a read-only function within a transaction
+func (dm *DBManager) WithTxReadOnly(ctx context.Context, projectName string, fn func(*Queries) error) error {
+	// Get the base querier
+	querier, err := dm.GetQuerier(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to get querier: %w", err)
+	}
+
+	// Get the underlying database connection
+	dm.mu.RLock()
+	db, ok := dm.dbs[projectName]
+	dm.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("database connection not found for project: %s", projectName)
+	}
+
+	// Begin read-only transaction
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("failed to begin read-only transaction: %w", err)
+	}
+
+	// Create querier with transaction
+	txQuerier := querier.WithTx(tx)
+
+	// Execute the function
+	if err := fn(txQuerier); err != nil {
+		// Rollback on error
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("read-only transaction failed and rollback failed: %v (original error: %w)", rollbackErr, err)
+		}
+		return err
+	}
+
+	// Commit on success (read-only commits are safe)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit read-only transaction: %w", err)
+	}
+
+	return nil
 }

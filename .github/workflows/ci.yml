@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run Go tests
+        run: go test ./... -v -race -coverprofile=coverage.out
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+
+  build-libsql:
+    name: Build LibSQL Static Libraries
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build LibSQL ${{ matrix.arch }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./build/Dockerfile.libsql-${{ matrix.arch }}
+          push: false
+          tags: libsql-${{ matrix.arch }}:latest
+          outputs: type=local,dest=./lib-${{ matrix.arch }}
+
+      - name: Verify LibSQL build artifacts
+        run: |
+          ls -la ./lib-${{ matrix.arch }}/
+          file ./lib-${{ matrix.arch }}/libsql-${{ matrix.arch }}.a
+
+      - name: Upload LibSQL ${{ matrix.arch }} artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: libsql-${{ matrix.arch }}
+          path: ./lib-${{ matrix.arch }}/
+
+  smoke-test:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [test, build-libsql]
+
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
+
+      - name: Download LibSQL ${{ matrix.arch }} artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: libsql-${{ matrix.arch }}
+          path: ./lib/
+
+      - name: Verify downloaded artifacts
+        run: ls -la ./lib/
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run smoke tests
+        run: go run scripts/smoke-test-libsql.go
+
+      - name: Build application
+        run: |
+          CGO_ENABLED=1 \
+          CGO_CFLAGS="-I./lib" \
+          CGO_LDFLAGS="-L./lib -lsql-${{ matrix.arch }} -lm -ldl" \
+          GOOS=linux \
+          GOARCH=${{ matrix.arch }} \
+          go build -o vvfs-${{ matrix.arch }} .
+
+      - name: Test application binary
+        run: |
+          file vvfs-${{ matrix.arch }}
+          ls -lh vvfs-${{ matrix.arch }}
+
+      - name: Upload built application
+        uses: actions/upload-artifact@v3
+        with:
+          name: vvfs-${{ matrix.arch }}
+          path: vvfs-${{ matrix.arch }}
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [smoke-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download AMD64 application
+        uses: actions/download-artifact@v3
+        with:
+          name: vvfs-amd64
+          path: ./bin/
+
+      - name: Download ARM64 application
+        uses: actions/download-artifact@v3
+        with:
+          name: vvfs-arm64
+          path: ./bin/
+
+      - name: Download AMD64 LibSQL
+        uses: actions/download-artifact@v3
+        with:
+          name: libsql-amd64
+          path: ./lib/
+
+      - name: Download ARM64 LibSQL
+        uses: actions/download-artifact@v3
+        with:
+          name: libsql-arm64
+          path: ./lib/
+
+      - name: Create release archives
+        run: |
+          mkdir -p release
+          cp bin/vvfs-amd64 release/
+          cp bin/vvfs-arm64 release/
+          cp lib/libsql-amd64.a release/
+          cp lib/libsql-arm64.a release/
+
+          cd release
+          tar czf vvfs-linux-amd64.tar.gz vvfs-amd64 libsql-amd64.a
+          tar czf vvfs-linux-arm64.tar.gz vvfs-arm64 libsql-arm64.a
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/vvfs-linux-amd64.tar.gz
+            release/vvfs-linux-arm64.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

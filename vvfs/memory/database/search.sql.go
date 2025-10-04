@@ -29,16 +29,25 @@ type GetEntitiesByMetadataParams struct {
 	Offset  int64          `json:"offset"`
 }
 
+type GetEntitiesByMetadataRow struct {
+	Name       string      `json:"name"`
+	EntityType string      `json:"entity_type"`
+	Embedding  interface{} `json:"embedding"`
+	Metadata   string      `json:"metadata"`
+	CreatedAt  int64       `json:"created_at"`
+	UpdatedAt  int64       `json:"updated_at"`
+}
+
 // Search entities by metadata content
-func (q *Queries) GetEntitiesByMetadata(ctx context.Context, arg GetEntitiesByMetadataParams) ([]Entity, error) {
+func (q *Queries) GetEntitiesByMetadata(ctx context.Context, arg GetEntitiesByMetadataParams) ([]GetEntitiesByMetadataRow, error) {
 	rows, err := q.query(ctx, q.getEntitiesByMetadataStmt, getEntitiesByMetadata, arg.Column1, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Entity{}
+	items := []GetEntitiesByMetadataRow{}
 	for rows.Next() {
-		var i Entity
+		var i GetEntitiesByMetadataRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.EntityType,
@@ -146,16 +155,25 @@ type GetEntitiesWithEmbeddingsParams struct {
 	Offset int64 `json:"offset"`
 }
 
+type GetEntitiesWithEmbeddingsRow struct {
+	Name       string      `json:"name"`
+	EntityType string      `json:"entity_type"`
+	Embedding  interface{} `json:"embedding"`
+	Metadata   string      `json:"metadata"`
+	CreatedAt  int64       `json:"created_at"`
+	UpdatedAt  int64       `json:"updated_at"`
+}
+
 // Get entities that have embeddings for vector operations
-func (q *Queries) GetEntitiesWithEmbeddings(ctx context.Context, arg GetEntitiesWithEmbeddingsParams) ([]Entity, error) {
+func (q *Queries) GetEntitiesWithEmbeddings(ctx context.Context, arg GetEntitiesWithEmbeddingsParams) ([]GetEntitiesWithEmbeddingsRow, error) {
 	rows, err := q.query(ctx, q.getEntitiesWithEmbeddingsStmt, getEntitiesWithEmbeddings, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Entity{}
+	items := []GetEntitiesWithEmbeddingsRow{}
 	for rows.Next() {
-		var i Entity
+		var i GetEntitiesWithEmbeddingsRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.EntityType,
@@ -194,16 +212,25 @@ type GetRecentEntitiesParams struct {
 	Offset int64 `json:"offset"`
 }
 
+type GetRecentEntitiesRow struct {
+	Name       string      `json:"name"`
+	EntityType string      `json:"entity_type"`
+	Embedding  interface{} `json:"embedding"`
+	Metadata   string      `json:"metadata"`
+	CreatedAt  int64       `json:"created_at"`
+	UpdatedAt  int64       `json:"updated_at"`
+}
+
 // Get recently created entities
-func (q *Queries) GetRecentEntities(ctx context.Context, arg GetRecentEntitiesParams) ([]Entity, error) {
+func (q *Queries) GetRecentEntities(ctx context.Context, arg GetRecentEntitiesParams) ([]GetRecentEntitiesRow, error) {
 	rows, err := q.query(ctx, q.getRecentEntitiesStmt, getRecentEntities, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Entity{}
+	items := []GetRecentEntitiesRow{}
 	for rows.Next() {
-		var i Entity
+		var i GetRecentEntitiesRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.EntityType,
@@ -245,16 +272,25 @@ type SearchEntitiesByContentParams struct {
 	Offset  int64          `json:"offset"`
 }
 
+type SearchEntitiesByContentRow struct {
+	Name       string      `json:"name"`
+	EntityType string      `json:"entity_type"`
+	Embedding  interface{} `json:"embedding"`
+	Metadata   string      `json:"metadata"`
+	CreatedAt  int64       `json:"created_at"`
+	UpdatedAt  int64       `json:"updated_at"`
+}
+
 // Search entities by observation content
-func (q *Queries) SearchEntitiesByContent(ctx context.Context, arg SearchEntitiesByContentParams) ([]Entity, error) {
+func (q *Queries) SearchEntitiesByContent(ctx context.Context, arg SearchEntitiesByContentParams) ([]SearchEntitiesByContentRow, error) {
 	rows, err := q.query(ctx, q.searchEntitiesByContentStmt, searchEntitiesByContent, arg.Column1, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Entity{}
+	items := []SearchEntitiesByContentRow{}
 	for rows.Next() {
-		var i Entity
+		var i SearchEntitiesByContentRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.EntityType,
@@ -295,16 +331,25 @@ type SearchEntitiesByNameParams struct {
 	Offset  int64          `json:"offset"`
 }
 
+type SearchEntitiesByNameRow struct {
+	Name       string      `json:"name"`
+	EntityType string      `json:"entity_type"`
+	Embedding  interface{} `json:"embedding"`
+	Metadata   string      `json:"metadata"`
+	CreatedAt  int64       `json:"created_at"`
+	UpdatedAt  int64       `json:"updated_at"`
+}
+
 // Search entities by name
-func (q *Queries) SearchEntitiesByName(ctx context.Context, arg SearchEntitiesByNameParams) ([]Entity, error) {
+func (q *Queries) SearchEntitiesByName(ctx context.Context, arg SearchEntitiesByNameParams) ([]SearchEntitiesByNameRow, error) {
 	rows, err := q.query(ctx, q.searchEntitiesByNameStmt, searchEntitiesByName, arg.Column1, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Entity{}
+	items := []SearchEntitiesByNameRow{}
 	for rows.Next() {
-		var i Entity
+		var i SearchEntitiesByNameRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.EntityType,
@@ -345,16 +390,25 @@ type SearchEntitiesByTypeParams struct {
 	Offset     int64  `json:"offset"`
 }
 
+type SearchEntitiesByTypeRow struct {
+	Name       string      `json:"name"`
+	EntityType string      `json:"entity_type"`
+	Embedding  interface{} `json:"embedding"`
+	Metadata   string      `json:"metadata"`
+	CreatedAt  int64       `json:"created_at"`
+	UpdatedAt  int64       `json:"updated_at"`
+}
+
 // Search entities by type
-func (q *Queries) SearchEntitiesByType(ctx context.Context, arg SearchEntitiesByTypeParams) ([]Entity, error) {
+func (q *Queries) SearchEntitiesByType(ctx context.Context, arg SearchEntitiesByTypeParams) ([]SearchEntitiesByTypeRow, error) {
 	rows, err := q.query(ctx, q.searchEntitiesByTypeStmt, searchEntitiesByType, arg.EntityType, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Entity{}
+	items := []SearchEntitiesByTypeRow{}
 	for rows.Next() {
-		var i Entity
+		var i SearchEntitiesByTypeRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.EntityType,

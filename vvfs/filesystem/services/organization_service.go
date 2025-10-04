@@ -177,7 +177,7 @@ func (ors *OrganizationService) processFile(ctx context.Context, file *trees.Fil
 	targetPath := filepath.Join(targetDir, file.Name)
 
 	// Check for conflicts
-	if _, err := ors.Stat(targetPath); err == nil {
+	if _, err := os.Stat(targetPath); err == nil {
 		conflict := types.ConflictInfo{
 			SourcePath:   file.Path,
 			TargetPath:   targetPath,
@@ -201,7 +201,7 @@ func (ors *OrganizationService) processFile(ctx context.Context, file *trees.Fil
 
 	// Create target directory if needed
 	if !opts.DryRun {
-		if err := ors.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 			return fmt.Errorf("failed to create target directory %s: %w", filepath.Dir(targetPath), err)
 		}
 	}
@@ -456,7 +456,7 @@ func (ors *OrganizationService) ExecuteOrganization(ctx context.Context, preview
 		}
 
 		// Create target directory if needed
-		if err := ors.MkdirAll(filepath.Dir(operation.TargetPath), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(operation.TargetPath), 0o755); err != nil {
 			return fmt.Errorf("failed to create target directory %s: %w", filepath.Dir(operation.TargetPath), err)
 		}
 
@@ -497,15 +497,6 @@ func (ors *OrganizationService) OrganizeFiles(ctx context.Context, opts options.
 
 	_, err := ors.OrganizeDirectory(ctx, opts.SourceDir, opts.TargetDir, opts)
 	return err
-}
-
-// Utility methods for file system operations
-func (ors *OrganizationService) Stat(path string) (os.FileInfo, error) {
-	return os.Stat(path)
-}
-
-func (ors *OrganizationService) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
 }
 
 // Ensure OrganizationService implements the interface

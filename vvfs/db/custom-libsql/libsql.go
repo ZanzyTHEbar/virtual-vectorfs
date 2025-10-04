@@ -7,6 +7,42 @@ package customlibsql
 
 #include "libsql.h"
 #include <stdlib.h>
+#include <dlfcn.h>
+
+// Attempt to dlopen the module and call its init entry point.
+// Returns 0 on success, non-zero on failure. out_err_msg is malloc'd by dlerror() or a static string.
+static int call_extension_init(const char* path, const char* init_name, const char** out_err_msg) {
+    void* h = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    if (!h) {
+        const char* e = dlerror();
+        if (e) {
+            *out_err_msg = e;
+        } else {
+            *out_err_msg = "dlopen failed";
+        }
+        return 1;
+    }
+    void* sym = dlsym(h, init_name);
+    if (!sym) {
+        const char* e = dlerror();
+        if (e) {
+            *out_err_msg = e;
+        } else {
+            *out_err_msg = "dlsym failed";
+        }
+        dlclose(h);
+        return 2;
+    }
+    // assume init has signature int (*)(void*) or int (*)(sqlite3*). Call with NULL.
+    int (*initf)(void*) = (int (*)(void*))sym;
+    int r = initf(NULL);
+    if (r != 0) {
+        *out_err_msg = "init returned non-zero";
+        // keep handle open to keep symbols alive
+        return 3;
+    }
+    return 0;
+}
 */
 import "C"
 
@@ -15,6 +51,8 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 	"unsafe"
@@ -70,6 +108,97 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 		}
 		return nil, fmt.Errorf("failed to connect libsql: code %d", int(rc))
 	}
+
+	// Attempt to load SQLean shared modules at runtime as a fallback if present.
+	// Controlled by env LIBSQL_ENABLE_RUNTIME_SQLEAN (default: true when artifacts dir exists).
+	func() {
+		// discover dir
+		sqdir := os.Getenv("LIBSQL_SQLEAN_DIR")
+		if sqdir == "" {
+			sqdir = "./build/artifacts/artifacts/sqlean"
+		}
+		enable := os.Getenv("LIBSQL_ENABLE_RUNTIME_SQLEAN")
+		if enable == "" {
+			if _, err := os.Stat(sqdir); err == nil {
+				enable = "1"
+			}
+		}
+		if enable == "1" || enable == "true" {
+			files, err := os.ReadDir(sqdir)
+			if err != nil {
+				// no sqlean dir
+				return
+			}
+			for _, f := range files {
+				if f.IsDir() {
+					continue
+				}
+				if filepath.Ext(f.Name()) != ".so" && filepath.Ext(f.Name()) != ".dll" && filepath.Ext(f.Name()) != ".dylib" {
+					continue
+				}
+				p := filepath.Join(sqdir, f.Name())
+				cpath := C.CString(p)
+				var out *C.char
+
+				// 1) Try libsql_load_extension with nil entrypoint (common case)
+				res := C.libsql_load_extension(conn, cpath, nil, (**C.char)(unsafe.Pointer(&out)))
+				if res == 0 {
+					C.free(unsafe.Pointer(cpath))
+					fmt.Printf("Loaded sqlean via libsql_load_extension: %s\n", p)
+					continue
+				}
+				// if we have an error message from libsql, capture it (non-fatal for fallback)
+				var libErr string
+				if out != nil {
+					libErr = C.GoString(out)
+				}
+
+				// 2) Try candidate entry points with libsql_load_extension
+				candidates := []string{"sqlite3_extension_init", "sqlean_init", fmt.Sprintf("sqlite3_%s_init", stripExt(f.Name())), fmt.Sprintf("%s_init", stripExt(f.Name()))}
+				loaded := false
+				for _, ep := range candidates {
+					centry := C.CString(ep)
+					res2 := C.libsql_load_extension(conn, cpath, centry, (**C.char)(unsafe.Pointer(&out)))
+					C.free(unsafe.Pointer(centry))
+					if res2 == 0 {
+						C.free(unsafe.Pointer(cpath))
+						fmt.Printf("Loaded sqlean via libsql_load_extension entry '%s': %s\n", ep, p)
+						loaded = true
+						break
+					}
+				}
+				if loaded {
+					continue
+				}
+
+				// 3) Fallback: dlopen and call init symbol directly using C.call_extension_init
+				for _, ep := range candidates {
+					centry := C.CString(ep)
+					var cerr *C.char
+					res3 := C.call_extension_init(cpath, centry, (**C.char)(unsafe.Pointer(&cerr)))
+					C.free(unsafe.Pointer(centry))
+					if res3 == 0 {
+						C.free(unsafe.Pointer(cpath))
+						fmt.Printf("Loaded sqlean via dlopen+init '%s': %s\n", ep, p)
+						loaded = true
+						break
+					}
+					if cerr != nil {
+						fmt.Printf("WARN: dlopen init '%s' failed for %s: %s\n", ep, p, C.GoString(cerr))
+					}
+				}
+				// Free cpath if not already freed
+				C.free(unsafe.Pointer(cpath))
+				if !loaded {
+					if libErr != "" {
+						fmt.Printf("WARN: failed to load sqlean %s via libsql_load_extension: %s\n", p, libErr)
+					} else {
+						fmt.Printf("WARN: failed to load sqlean %s: no supported entrypoint found\n", p)
+					}
+				}
+			}
+		}
+	}()
 
 	return &Connection{conn: (*C.libsql_connection)(unsafe.Pointer(conn))}, nil
 }
@@ -335,7 +464,63 @@ func NewEmbeddedConnector(dbPath string) *Connector {
 	return &Connector{dsn: dsn}
 }
 
+// stripExt removes file extension from filename
+func stripExt(name string) string {
+	if idx := len(name) - len(filepath.Ext(name)); idx > 0 {
+		return name[:idx]
+	}
+	return name
+}
+
 // WaitForSync is a no-op for embedded use
 func (c *Connection) WaitForSync(ctx context.Context, timeout time.Duration) error {
 	return nil // No sync needed for embedded
+}
+
+// CallExtensionInit is a debug helper that attempts to dlopen a module and call its init symbol.
+// Returns result code and optional error message.
+func CallExtensionInit(path string, initName string) (int, string) {
+	cpath := C.CString(path)
+	centry := C.CString(initName)
+	defer C.free(unsafe.Pointer(cpath))
+	defer C.free(unsafe.Pointer(centry))
+	var cerr *C.char
+	res := C.call_extension_init(cpath, centry, (**C.char)(unsafe.Pointer(&cerr)))
+	msg := ""
+	if cerr != nil {
+		msg = C.GoString(cerr)
+	}
+	return int(res), msg
+}
+
+// DebugLoadExtension opens an embedded connection and attempts to call libsql_load_extension on the provided shared object path and optional entrypoint.
+// Returns rc (int), message string (if any), and error for Go-level failures.
+func DebugLoadExtension(dbPath string, soPath string, entry string) (int, string, error) {
+	connector := &Connector{dsn: fmt.Sprintf("file:%s", dbPath)}
+	drvConn, err := connector.Connect(context.Background())
+	if err != nil {
+		return -1, "", fmt.Errorf("connect failed: %w", err)
+	}
+	defer drvConn.Close()
+	conn, ok := drvConn.(*Connection)
+	if !ok {
+		return -1, "", fmt.Errorf("unexpected connection type")
+	}
+
+	cpath := C.CString(soPath)
+	defer C.free(unsafe.Pointer(cpath))
+	var centry *C.char
+	if entry != "" {
+		centry = C.CString(entry)
+		defer C.free(unsafe.Pointer(centry))
+	} else {
+		centry = nil
+	}
+	var out *C.char
+	rc := C.libsql_load_extension(conn.conn, cpath, centry, (**C.char)(unsafe.Pointer(&out)))
+	msg := ""
+	if out != nil {
+		msg = C.GoString(out)
+	}
+	return int(rc), msg, nil
 }

@@ -30,7 +30,7 @@ func (suite *ConfigTestSuite) SetupTest() {
 	require.NoError(suite.T(), err)
 
 	// Create temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "file4you-config-test-*")
+	tempDir, err := os.MkdirTemp("", "vvfs-config-test-*")
 	require.NoError(suite.T(), err)
 	suite.tempDir = tempDir
 
@@ -59,39 +59,27 @@ func (suite *ConfigTestSuite) TestLoadConfigWithDefaults() {
 	require.NotNil(suite.T(), cfg)
 
 	// Test that config has expected structure
-	assert.NotNil(suite.T(), cfg.Genkit)
-	assert.NotNil(suite.T(), cfg.File4You)
+	assert.NotNil(suite.T(), cfg.VVFS)
+	assert.NotNil(suite.T(), cfg.VVFS)
 
 	// Test default values
-	assert.Equal(suite.T(), ".", cfg.File4You.TargetDir)
-	assert.Equal(suite.T(), internal.DefaultCacheDir, cfg.File4You.CacheDir)
-	assert.Equal(suite.T(), internal.DefaultDatabaseDSN, cfg.File4You.Database.DSN)
-	assert.Equal(suite.T(), internal.DefaultDatabaseType, cfg.File4You.Database.Type)
-	assert.Equal(suite.T(), 10, cfg.File4You.OrganizeTimeoutMinutes)
+	assert.Equal(suite.T(), ".", cfg.VVFS.TargetDir)
+	assert.Equal(suite.T(), internal.DefaultCacheDir, cfg.VVFS.CacheDir)
+	assert.Equal(suite.T(), internal.DefaultDatabaseDSN, cfg.VVFS.Database.DSN)
+	assert.Equal(suite.T(), internal.DefaultDatabaseType, cfg.VVFS.Database.Type)
+	assert.Equal(suite.T(), 10, cfg.VVFS.OrganizeTimeoutMinutes)
 }
 
 func (suite *ConfigTestSuite) TestLoadConfigWithFile() {
 	// Create a test config file
 	configContent := `
-genkit:
-  prompts:
-    directory: "./test-prompts"
-  plugins:
-    openai:
-      apiKey: "test-key"
-      defaultModel: "gpt-3.5-turbo"
-      timeoutSeconds: 30
-
-file4you:
+vvfs:
   targetDir: "./test-target"
   cacheDir: "./test-cache"
   database:
     dsn: "test.db"
     type: "sqlite"
   organizeTimeoutMinutes: 5
-  genkithandler:
-    featureFlags:
-      testFeature: true
 `
 
 	configFile := filepath.Join(suite.tempDir, "config.yaml")
@@ -105,16 +93,11 @@ file4you:
 	require.NotNil(suite.T(), cfg)
 
 	// Test that values were loaded from file
-	assert.Equal(suite.T(), "./test-prompts", cfg.Genkit.Prompts.Directory)
-	assert.Equal(suite.T(), "test-key", cfg.Genkit.Plugins.OpenAI.APIKey)
-	assert.Equal(suite.T(), "gpt-3.5-turbo", cfg.Genkit.Plugins.OpenAI.DefaultModel)
-	assert.Equal(suite.T(), 30, cfg.Genkit.Plugins.OpenAI.TimeoutSeconds)
-
-	assert.Equal(suite.T(), "./test-target", cfg.File4You.TargetDir)
-	assert.Equal(suite.T(), "./test-cache", cfg.File4You.CacheDir)
-	assert.Equal(suite.T(), "test.db", cfg.File4You.Database.DSN)
-	assert.Equal(suite.T(), "sqlite", cfg.File4You.Database.Type)
-	assert.Equal(suite.T(), 5, cfg.File4You.OrganizeTimeoutMinutes)
+	assert.Equal(suite.T(), "./test-target", cfg.VVFS.TargetDir)
+	assert.Equal(suite.T(), "./test-cache", cfg.VVFS.CacheDir)
+	assert.Equal(suite.T(), "test.db", cfg.VVFS.Database.DSN)
+	assert.Equal(suite.T(), "sqlite", cfg.VVFS.Database.Type)
+	assert.Equal(suite.T(), 5, cfg.VVFS.OrganizeTimeoutMinutes)
 
 	// Test feature flags - skip this test for now as viper may not load complex structures as expected
 	suite.T().Log("Feature flags test skipped - may need viper configuration debugging")
@@ -132,9 +115,13 @@ func (suite *ConfigTestSuite) TestLoadConfigInvalidFile() {
 func (suite *ConfigTestSuite) TestLoadConfigMalformedFile() {
 	// Create a malformed config file
 	malformedContent := `
-genkit:
-  prompts:
-    directory: "./test-prompts"
+vvfs:
+  targetDir: "./test-target"
+  cacheDir: "./test-cache"
+  database:
+    dsn: "test.db"
+    type: "libsql"
+  organizeTimeoutMinutes: 5
   invalid_yaml: [unclosed bracket
 `
 
@@ -153,23 +140,10 @@ genkit:
 func (suite *ConfigTestSuite) TestConfigStructure() {
 	cfg, err := LoadConfig("")
 	require.NoError(suite.T(), err)
+	require.NotNil(suite.T(), cfg)
 
-	// Test Genkit config structure
-	assert.NotNil(suite.T(), cfg.Genkit.Plugins)
-	assert.NotNil(suite.T(), cfg.Genkit.Prompts)
-
-	// Test plugins structure
-	assert.IsType(suite.T(), GenkitPlugin{}, cfg.Genkit.Plugins.GoogleAI)
-	assert.IsType(suite.T(), GenkitPlugin{}, cfg.Genkit.Plugins.OpenAI)
-
-	// Test File4You config structure
-	assert.NotNil(suite.T(), cfg.File4You.Database)
-	assert.NotNil(suite.T(), cfg.File4You.GenkitHandler)
-	// FeatureFlags map may be nil if not initialized
-	if cfg.File4You.GenkitHandler.FeatureFlags == nil {
-		cfg.File4You.GenkitHandler.FeatureFlags = make(map[string]bool)
-	}
-	assert.NotNil(suite.T(), cfg.File4You.GenkitHandler.FeatureFlags)
+	assert.NotNil(suite.T(), cfg.VVFS)
+	assert.NotNil(suite.T(), cfg.VVFS.Database)
 }
 
 func (suite *ConfigTestSuite) TestAppConfigGlobal() {
@@ -178,45 +152,32 @@ func (suite *ConfigTestSuite) TestAppConfigGlobal() {
 	require.NoError(suite.T(), err)
 
 	// AppConfig should be set
-	assert.Equal(suite.T(), cfg.File4You.TargetDir, AppConfig.File4You.TargetDir)
-	assert.Equal(suite.T(), cfg.Genkit.Prompts.Directory, AppConfig.Genkit.Prompts.Directory)
+	assert.Equal(suite.T(), cfg.VVFS.TargetDir, AppConfig.VVFS.TargetDir)
 }
 
 // TestConfigTypes tests the configuration type definitions
 func TestConfigTypes(t *testing.T) {
 	// Test Config instantiation
 	config := Config{}
-	assert.IsType(t, GenkitConfig{}, config.Genkit)
-	assert.IsType(t, File4YouConfig{}, config.File4You)
 
-	// Test GenkitConfig instantiation
-	genkitConfig := GenkitConfig{}
-	assert.IsType(t, GenkitPluginsConfig{}, genkitConfig.Plugins)
-	assert.IsType(t, GenkitPromptsConfig{}, genkitConfig.Prompts)
-
-	// Test GenkitPlugin instantiation
-	plugin := GenkitPlugin{}
-	assert.IsType(t, "", plugin.APIKey)
-	assert.IsType(t, "", plugin.DefaultModel)
-	assert.IsType(t, 0, plugin.TimeoutSeconds)
+	assert.IsType(t, VVFSConfig{}, config.VVFS)
 
 	// Test DatabaseConfig instantiation
 	dbConfig := DatabaseConfig{}
 	assert.IsType(t, "", dbConfig.DSN)
 	assert.IsType(t, "", dbConfig.Type)
 
-	// Test File4YouConfig instantiation
-	f4yConfig := File4YouConfig{}
-	assert.IsType(t, File4YouGenkitHandlerConfig{}, f4yConfig.GenkitHandler)
-	assert.IsType(t, "", f4yConfig.TargetDir)
-	assert.IsType(t, "", f4yConfig.CacheDir)
-	assert.IsType(t, DatabaseConfig{}, f4yConfig.Database)
-	assert.IsType(t, 0, f4yConfig.OrganizeTimeoutMinutes)
+	// Test VVFSConfig instantiation
+	vvfsConfig := VVFSConfig{}
+	assert.IsType(t, "", vvfsConfig.TargetDir)
+	assert.IsType(t, "", vvfsConfig.CacheDir)
+	assert.IsType(t, DatabaseConfig{}, vvfsConfig.Database)
+	assert.IsType(t, 0, vvfsConfig.OrganizeTimeoutMinutes)
 }
 
 // BenchmarkLoadConfig benchmarks config loading performance
 func BenchmarkLoadConfig(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		cfg, err := LoadConfig("")
 		if err != nil {
 			b.Fatal(err)
@@ -228,17 +189,14 @@ func BenchmarkLoadConfig(b *testing.B) {
 // BenchmarkLoadConfigWithFile benchmarks config loading from file
 func BenchmarkLoadConfigWithFile(b *testing.B) {
 	// Create a temporary config file
-	tempDir, err := os.MkdirTemp("", "file4you-bench-*")
+	tempDir, err := os.MkdirTemp("", "vvfs-bench-*")
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer os.RemoveAll(tempDir)
 
 	configContent := `
-genkit:
-  prompts:
-    directory: "./prompts"
-file4you:
+vvfs:
   targetDir: "."
   cacheDir: "./cache"
 `
@@ -249,8 +207,7 @@ file4you:
 		b.Fatal(err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		cfg, err := LoadConfig(configFile)
 		if err != nil {
 			b.Fatal(err)

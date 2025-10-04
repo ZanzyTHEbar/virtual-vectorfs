@@ -1,5 +1,5 @@
 # LibSQL static build for linux/amd64 (pinned v0.9.23 - commit 7eed898)
-FROM rust:1.76-bullseye as builder
+FROM rust:1.76-bullseye AS builder
 
 RUN apt-get update && apt-get install -y build-essential clang llvm lld pkg-config git curl unzip cmake && rm -rf /var/lib/apt/lists/*
 
@@ -11,35 +11,67 @@ RUN git clone https://github.com/tursodatabase/libsql.git libsql && \
     git fetch --all --tags && \
     git checkout 7eed898
 
-# Vendor selected SQLean modules into build directory
-RUN git clone https://github.com/nalgeon/sqlean.git /tmp/sqlean && \
-    mkdir -p libsql/sqlean && \
-    cp -r /tmp/sqlean/src/crypto libsql/sqlean/crypto && \
-    cp -r /tmp/sqlean/src/fuzzy libsql/sqlean/fuzzy && \
-    cp -r /tmp/sqlean/src/math libsql/sqlean/math && \
-    cp -r /tmp/sqlean/src/stats libsql/sqlean/stats && \
-    cp -r /tmp/sqlean/src/text libsql/sqlean/text
+# Vendor entire SQLean repo into libsql for build (includes Makefile and scripts)
+RUN git clone https://github.com/nalgeon/sqlean.git libsql/sqlean
 
-# Apply a small integration patch to register SQLean init functions in Rust bindings
-COPY libsql-sqlean-patch.diff /build/libsql-sqlean-patch.diff
-RUN cd libsql && git apply /build/libsql-sqlean-patch.diff || true
+# Prepare and build SQLean shared modules before compiling libsql so we can point libsql to them
+RUN cd libsql && \
+    if [ -d sqlean ]; then cd sqlean && make prepare-dist || true && make download-external || true && make compile-linux || true && cd ..; fi
+
+# Insert auto-load code into bindings if not already present
+RUN cd libsql && python3 - <<'PY'
+import io,sys
+fpath='bindings/c/src/lib.rs'
+try:
+    s=open(fpath,'r',encoding='utf8').read()
+except FileNotFoundError:
+    sys.exit(0)
+needle='let db = Box::leak(Box::new(libsql_database { db }));'
+if needle in s and 'Load SQLean extensions' not in s:
+    insert='''
+            // Load SQLean extensions (vendor: libsql/sqlean/dist)
+            let extensions = vec![
+                "./sqlean/dist/sqlean.so",
+                "./sqlean/dist/crypto.so",
+                "./sqlean/dist/fuzzy.so",
+                "./sqlean/dist/math.so",
+                "./sqlean/dist/stats.so",
+                "./sqlean/dist/text.so",
+            ];
+            for ext in extensions {
+                let _ = RT.block_on(async {
+                    let _guard = libsql::LoadExtensionGuard::new(&db.conn()).ok();
+                    db.load_extension(ext, None).await.ok();
+                });
+            }
+'''
+    s=s.replace(needle, insert+"\n            "+needle)
+    open(fpath,'w',encoding='utf8').write(s)
+    print('patched')
+PY
+
+# Ensure cmake is available to build native components and point build scripts to it
+ENV CMAKE=/usr/bin/cmake
+RUN which "$CMAKE" || (echo "cmake not found at $CMAKE" && false)
 
 # Build libsql C bindings as a static library
 RUN cd libsql && \
     cd bindings/c && \
-    cargo build --release
+    env CMAKE="$CMAKE" cargo build --release
 
 # Build SQLean shared modules (so they can be loaded at runtime if static-inclusion failed)
 RUN cd libsql/sqlean && \
-    if [ -f Makefile ]; then make compile-linux || true; fi || true
+    if [ -f Makefile ]; then make prepare-dist || true; make download-external || true; make compile-linux || true; fi || true
 
 # Extract artifacts
 RUN mkdir -p /output && \
-    cp libsql/bindings/c/target/release/libsql_experimental.a /output/libsql-amd64.a 2>/dev/null || true && \
+    # copy any .a archives produced anywhere under bindings/c/target
+    find libsql -type f -name "*.a" -exec cp {} /output/ \; 2>/dev/null || true && \
+    # copy headers if present
     cp libsql/bindings/c/include/libsql.h /output/libsql.h 2>/dev/null || true && \
-    # copy any built sqlean .so files
+    # copy any built sqlean .so files (prefer dist/ if present)
     mkdir -p /output/sqlean && \
-    find libsql/sqlean -name "*.so" -exec cp {} /output/sqlean/ \; 2>/dev/null || true && \
+    if [ -d libsql/sqlean/dist ]; then cp -r libsql/sqlean/dist/* /output/sqlean/ 2>/dev/null || true; else find libsql -type f -name "*.so" -exec cp {} /output/sqlean/ \; 2>/dev/null || true; fi && \
     echo "commit=7eed898" > /output/build-info.txt && \
     echo "features=fts5,json1,rtree,vector,sqlean(crypto,fuzzy,math,stats,text)" >> /output/build-info.txt
 

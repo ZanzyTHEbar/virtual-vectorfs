@@ -16,6 +16,12 @@ type Config struct {
 	MaxIdleConns     int
 	ConnMaxIdleSec   int
 	ConnMaxLifeSec   int
+	// PRAGMA settings
+	EnableWAL   bool
+	SyncMode    string // NORMAL, FULL, OFF
+	CacheSize   int    // pages, negative for KB
+	TempStore   string // MEMORY, FILE, DEFAULT
+	JournalMode string // WAL, DELETE, TRUNCATE, PERSIST, MEMORY, OFF
 }
 
 // NewConfig creates a new Config from environment variables
@@ -58,6 +64,34 @@ func NewConfig() *Config {
 		}
 	}
 
+	// PRAGMA settings
+	enableWAL := false
+	if v := os.Getenv("DB_ENABLE_WAL"); v != "" {
+		enableWAL = v == "true" || v == "1"
+	}
+
+	syncMode := "NORMAL"
+	if v := os.Getenv("DB_SYNC_MODE"); v != "" {
+		syncMode = v
+	}
+
+	cacheSize := -64000 // 64MB default
+	if v := os.Getenv("DB_CACHE_SIZE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cacheSize = n
+		}
+	}
+
+	tempStore := "MEMORY"
+	if v := os.Getenv("DB_TEMP_STORE"); v != "" {
+		tempStore = v
+	}
+
+	journalMode := "WAL"
+	if v := os.Getenv("DB_JOURNAL_MODE"); v != "" {
+		journalMode = v
+	}
+
 	return &Config{
 		URL:            url,
 		AuthToken:      authToken,
@@ -66,5 +100,11 @@ func NewConfig() *Config {
 		MaxIdleConns:   maxIdle,
 		ConnMaxIdleSec: idleSec,
 		ConnMaxLifeSec: lifeSec,
+		// PRAGMA settings
+		EnableWAL:   enableWAL,
+		SyncMode:    syncMode,
+		CacheSize:   cacheSize,
+		TempStore:   tempStore,
+		JournalMode: journalMode,
 	}
 }

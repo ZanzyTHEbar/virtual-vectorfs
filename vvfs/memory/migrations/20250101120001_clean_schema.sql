@@ -5,7 +5,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE entities (
     name TEXT PRIMARY KEY,
     entity_type TEXT NOT NULL,
-    embedding F32_BLOB(384),
+    embedding F32_BLOB(728),
     metadata TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -17,7 +17,7 @@ CREATE TABLE observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_name TEXT NOT NULL,
     content TEXT NOT NULL,
-    embedding F32_BLOB(384),
+    embedding F32_BLOB(728),
     created_at INTEGER NOT NULL,
     FOREIGN KEY(entity_name) REFERENCES entities(name)
 );
@@ -57,9 +57,9 @@ CREATE TABLE files (
     file_path TEXT NOT NULL,
     size INTEGER,
     mod_time INTEGER,
-    is_dir BOOLEAN DEFAULT FALSE,
+    is_dir INTEGER DEFAULT 0,
     checksum TEXT,
-    embedding F32_BLOB(384),
+    embedding F32_BLOB(728),
     metadata TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,

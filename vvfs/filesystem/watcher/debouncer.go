@@ -122,4 +122,3 @@ func (d *DebouncerImpl) Close() {
 
 	close(d.eventChan)
 }
-

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,14 +16,17 @@ var (
 	DefaultConfigPath          = filepath.Join(getHomeDir(), ".config", DefaultAppName)
 	DefaultCacheDir            = filepath.Join(DefaultConfigPath, ".cache")
 	DefaultCentralDBPath       = filepath.Join(DefaultConfigPath, "central.db")
-	DefaultWorkspaceDotDir     = "." + DefaultAppName
+	DefaultDatabaseDir         = filepath.Join(DefaultConfigPath, "databases")
+	DefaultWorkspaceDotDir     = fmt.Sprintf(".%s", DefaultAppName)
 	DefaultWorkspaceDBPath     = filepath.Join(DefaultWorkspaceDotDir, "workspace.db")
 	DefaultWorkspaceConfigFile = filepath.Join(DefaultWorkspaceDotDir, "config.toml")
 	DefaultGlobalConfigFile    = filepath.Join(DefaultConfigPath, "config.toml")
 
 	// Default Database settings
 	DefaultDatabaseDSN  = "file::memory:?cache=shared" // Default to in-memory SQLite
-	DefaultDatabaseType = "sqlite3"
+	DefaultDatabaseType = "libsql"
+	// Version will be set at build time using -ldflags
+	Version = "development"
 )
 
 func getHomeDir() string {

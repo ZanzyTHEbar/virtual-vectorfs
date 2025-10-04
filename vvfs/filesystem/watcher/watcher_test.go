@@ -284,4 +284,3 @@ func TestEvent_Struct(t *testing.T) {
 	assert.Equal(t, now, event.Timestamp)
 	assert.False(t, event.IsDir)
 }
-

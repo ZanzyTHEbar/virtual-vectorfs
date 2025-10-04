@@ -257,4 +257,3 @@ func (f *ContentFingerprinter) Compare(a, b *Fingerprint) float64 {
 
 	return 0.0
 }
-
