@@ -1,5 +1,5 @@
 # Makefile for Virtual VectorFS with Embedded LibSQL
-.PHONY: help build-libsql-amd64 build-libsql-arm64 build-libsql-all clean-libsql test-libsql smoke-test build-app-amd64 build-app-arm64 build-app-all fetch-sqlean extract-artifacts-amd64 extract-artifacts-arm64 build-libsql-amd64-full build-libsql-arm64-full validate-artifacts clean-build-cache models-download models-download-v2 models-validate models-clean models-clean-cache models-info models-check models-update-check ci-build release clean-all deps info
+.PHONY: help build-libsql-amd64 build-libsql-arm64 build-libsql-all clean-libsql test-libsql smoke-test build-app-amd64 build-app-arm64 build-app-all fetch-sqlean extract-artifacts-amd64 extract-artifacts-arm64 build-libsql-amd64-full build-libsql-arm64-full validate-artifacts clean-build-cache models-download models-download-v2 models-validate models-clean models-clean-cache models-info models-check models-update-check ci-build release clean-all deps info lint vet
 
 # Build configuration
 LIBSQL_VERSION := v0.9.23
@@ -255,6 +255,15 @@ info:
 	@echo "  Library Directory: $(LIB_DIR)"
 	@echo "  Models Directory: $(MODELS_DIR)"
 	@echo "  Architectures: linux/amd64, linux/arm64"
+
+# Lint and vet targets (exclude extra/ and ai-docs/)
+lint:
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not installed; see https://golangci-lint.run/"; exit 1; }
+	@golangci-lint run ./... --skip-dirs "^extra$$|^ai-docs$$"
+
+vet:
+	@echo "Running go vet (excluding extra/ and ai-docs/)"
+	@packages=$$(go list ./... | grep -v "^./extra" | grep -v "^./ai-docs" ); \n	if [ -n "$$packages" ]; then \n		go vet $$packages; \n	else \n		echo "No packages to vet"; \n	fi
 
 # ============================================================================
 # Model Management Targets
