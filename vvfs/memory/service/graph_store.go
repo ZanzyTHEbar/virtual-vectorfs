@@ -100,23 +100,23 @@ func (gs *GraphStoreImpl) ListEntities(ctx context.Context, opts ListOptions) ([
 		FROM entities
 	`
 
-	// Apply filters (simplified - can be extended)
+	// FIXME: Apply filters (simplified - can be extended)
 	if filter := opts.Filter; filter != nil {
-		// Example: filter by kind
+		// FIXME: Example: filter by kind
 		if _, ok := filter["kind"]; ok {
 			query += " WHERE kind = $1"
-			// Note: This is a simplified example; in practice, use proper query building
+			// FIXME: This is a simplified example; in practice, use proper query building
 		}
 	}
 
-	// Apply sorting
+	// FIXME: Apply sorting
 	if opts.Sort != "" {
 		query += " ORDER BY " + opts.Sort
 	} else {
 		query += " ORDER BY created_at DESC"
 	}
 
-	// Apply pagination
+	// FIXME: Apply pagination
 	if opts.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
 	}
@@ -266,7 +266,7 @@ func (gs *GraphStoreImpl) ListEdges(ctx context.Context, opts ListOptions) ([]*E
 		FROM edges
 	`
 
-	// Apply filters (simplified)
+	// FIXME: Apply filters (simplified)
 	if filter := opts.Filter; filter != nil {
 		// Example: filter by source entity
 		if _, ok := filter["src_id"]; ok {
@@ -274,14 +274,14 @@ func (gs *GraphStoreImpl) ListEdges(ctx context.Context, opts ListOptions) ([]*E
 		}
 	}
 
-	// Apply sorting
+	// FIXME: Apply sorting
 	if opts.Sort != "" {
 		query += " ORDER BY " + opts.Sort
 	} else {
 		query += " ORDER BY ingested_at DESC"
 	}
 
-	// Apply pagination
+	// FIXME: Apply pagination
 	if opts.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
 	}
@@ -337,12 +337,12 @@ func (gs *GraphStoreImpl) GetEdgesAsOf(ctx context.Context, timepoint time.Time,
 		FROM edges_asof($1)
 	`
 
-	// Apply additional filters if needed
+	// FIXME: Apply additional filters if needed
 	if filter := opts.Filter; filter != nil {
 		// Extend query with filters
 	}
 
-	// Apply sorting and pagination
+	// FIXME: Apply sorting and pagination
 	if opts.Sort != "" {
 		query += " ORDER BY " + opts.Sort
 	}
@@ -378,12 +378,12 @@ func (gs *GraphStoreImpl) GetCurrentEdges(ctx context.Context, opts ListOptions)
 		FROM edges_current
 	`
 
-	// Apply additional filters if needed
+	// FIXME: Apply additional filters if needed
 	if filter := opts.Filter; filter != nil {
 		// Extend query with filters
 	}
 
-	// Apply sorting and pagination
+	// FIXME: Apply sorting and pagination
 	if opts.Sort != "" {
 		query += " ORDER BY " + opts.Sort
 	}

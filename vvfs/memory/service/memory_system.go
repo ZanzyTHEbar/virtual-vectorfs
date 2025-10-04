@@ -77,7 +77,7 @@ func NewMemorySystem(ctx context.Context, cfg MemorySystemConfig) (*MemorySystem
 	if cfg.Embedder != nil {
 		ms.embedder = cfg.Embedder
 	} else {
-		// Use default embedder (placeholder - to be implemented)
+		// FIXME: Use default embedder (placeholder - to be implemented)
 		ms.embedder = NewDefaultEmbedder()
 	}
 
@@ -163,10 +163,10 @@ func (ms *MemorySystem) createVectorIndex() (VectorIndex, error) {
 	case "hnsw":
 		return NewHNSWIndex(ms.config)
 	case "leann":
-		// LEANN mode - experimental - not yet implemented
+		// FIXME: LEANN mode - experimental - not yet implemented
 		return nil, fmt.Errorf("LEANN vector index not yet implemented")
 	case "external":
-		// External ANN adapter - to be implemented
+		// FIXME: External ANN adapter - to be implemented
 		return nil, fmt.Errorf("external vector index not yet implemented")
 	default:
 		return NewFlatIndexImpl(ms.db, ms.embedder.Dimension()), nil
@@ -185,7 +185,7 @@ func (ms *MemorySystem) initializeGraphComponents(cfg MemorySystemConfig) error 
 	// Initialize knowledge extractor
 	ms.extractor = &KnowledgeExtractorImpl{
 		// LLM client would be injected here based on extractor.provider config
-		llmClient: nil, // Placeholder
+		llmClient: nil, // FIXME: Placeholder
 		config:    ms.config,
 	}
 
@@ -323,11 +323,11 @@ func NewDefaultEmbedder() *DefaultEmbedder {
 
 // Embed generates embeddings (placeholder implementation)
 func (e *DefaultEmbedder) Embed(ctx context.Context, texts []string) ([][]float64, error) {
-	// Placeholder: In a real implementation, this would call an embedding model
+	// FIXME: Placeholder: In a real implementation, this would call an embedding model
 	result := make([][]float64, len(texts))
 	for i := range texts {
 		result[i] = make([]float64, e.dimension)
-		// Zero embeddings for now
+		// FIXME: Zero embeddings for now
 	}
 	return result, nil
 }
