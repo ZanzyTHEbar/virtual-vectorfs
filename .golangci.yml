@@ -1,0 +1,14 @@
+run:
+  # Skip directories (regex) from linting
+  skip-dirs:
+    - '^extra$'
+    - '^ai-docs$'
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+
+issues:
+  exclude-use-default: false
