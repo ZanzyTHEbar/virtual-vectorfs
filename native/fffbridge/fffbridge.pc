@@ -1,0 +1,9 @@
+prefix=${pcfiledir}/../..
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: fffbridge
+Description: Local FFF search engine bridge
+Version: 0.1.0
+Cflags: -I${includedir}
+Libs: -L${libdir} -lfffbridge -Wl,-rpath,${libdir}

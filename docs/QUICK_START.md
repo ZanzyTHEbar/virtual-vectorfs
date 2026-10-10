@@ -1,276 +1,168 @@
-# 🚀 Quick Start: Embedding Real GGUF Models in File4You
+# Quick Start
 
-## The Problem
+## 1. Build native dependencies
 
-Your File4You implementation has placeholder GGUF files. To make it production-ready, you need **real models** embedded in the binary.
+The first build needs Linux, Go 1.25+, Rust stable, Cargo, pkg-config, a C/C++ toolchain, CMake, OpenBLAS/LAPACK, and OpenMP development libraries. On Debian/Ubuntu:
 
-## The Solution: 3-Step Process
-
-### Step 1: Choose Your Models
-
-#### Option A: LFM-2 Models (Requires Commercial License)
-
-```bash
-# ⚠️ Requires Liquid.ai commercial license
-./scripts/download_lfm2_models.sh
+```sh
+sudo apt-get install build-essential cmake pkg-config libopenblas-dev libomp-dev liblapack-dev
+make rust-test
+make test-fast
+make native
+make test
 ```
 
-#### Option B: Open-Source Models (Immediate - Recommended)
+`make native` builds the pinned FFF bridge and FAISS C API. Build output stays under ignored `build/` directories. The engine makes no network requests at runtime.
 
-```bash
-# 🆓 Production-ready open-source alternatives
-./scripts/download_open_source_models.sh
-```
-
-**Models Downloaded:**
-
-- **Embedding**: nomic-embed-text-v1.5.Q4_K_M.gguf (~200MB) - Apache 2.0 license
-- **Chat**: Llama-3.2-3B-Instruct-Q4_K_M.gguf (~2GB) - Llama 2 license
-- **Vision**: llava-phi-3-mini-f16.gguf (~2.5GB) - MIT license
-
-### Step 2: Validate Installation
-
-```bash
-# Validate models and test integration
-./scripts/validate_models.sh
-```
-
-**Expected Output:**
-
-```
-🔍 Model Validation Script
-==========================
-📁 Checking embedded model files...
-✅ lfm2-embed-7b.gguf found (200MB)
-✅ lfm2-chat-7b.gguf found (2.0GB)
-✅ lfm2-vl-7b.gguf found (2.5GB)
-
-🔍 Validating GGUF headers...
-✅ lfm2-embed-7b.gguf: Valid GGUF header
-✅ lfm2-chat-7b.gguf: Valid GGUF header
-✅ lfm2-vl-7b.gguf: Valid GGUF header
-
-🔨 Testing Go compilation...
-✅ Application compiled successfully
-
-🧪 Testing embedded model loading...
-✅ Embedded model tests passed
-
-🎉 All validations passed!
-```
-
-### Step 3: Build Production Binary
-
-```bash
-# Build with embedded models
-go build -o file4you -ldflags="-s -w" .
-
-# Check binary size (expect ~5GB with embedded models)
-ls -lh file4you
-```
-
-## 📋 What Happens Behind the Scenes
-
-### Model Embedding Process
+## 2. Open and synchronize a file corpus
 
 ```go
-// In vvfs/generation/embedded/models.go
-//go:embed lfm2-embed-7b.gguf
-var lfm2EmbedModelData []byte
+ctx := context.Background()
 
-// At runtime
-modelData, err := embedded.GetEmbeddedModelData(embedded.ModelTypeEmbedding)
-// Returns the full 200MB GGUF binary as []byte
+engine, err := search.Open(ctx, search.Options{
+    Root:         "/home/me/project",
+    IndexPath:    "/home/me/.cache/vvfs/project.bleve",
+    Storage:      search.StorageDisk,
+    VectorDimensions: 384, // example only; must match the embedding model
+    FilterFields: []string{"language", "kind"},
+})
+if err != nil {
+    return err
+}
+defer engine.Close()
+
+report, err := engine.SyncFiles(ctx)
+if err != nil {
+    return err
+}
+fmt.Printf("indexed=%d skipped=%d stale=%d errors=%d\n",
+    report.Indexed, report.Skipped, report.Stale, report.Errors)
+fmt.Printf("per-file evidence: %s\n", report.EvidencePath)
 ```
 
-### Model Loading Process
+`SyncFiles` waits for FFF's initial catalog/watch readiness, reads FFF inventory pages, hashes eligible file contents, and writes bounded Bleve batches. FFF events continue to update the index after the initial sync. `Status()` reports readiness and background errors.
+
+## 3. Search file names, content, and metadata
 
 ```go
-// 1. Extract embedded model to temp file
-tempPath := extractEmbeddedModel() // Creates secure temp file
+files, err := engine.FindFiles(ctx, search.FileQuery{
+    Text: "watcher",
+    Offset: 0,
+    Limit: 20,
+})
+if err != nil {
+    return err
+}
 
-// 2. Load with go-llama.cpp
-llm, err := llama.New(tempPath, llama.SetContext(4096), llama.SetGPULayers(-1))
+matches, err := engine.Grep(ctx, search.GrepQuery{
+    Text: "overflow",
+    Mode: search.GrepModePlain,
+    Limit: 20,
+    ContextBefore: 1,
+    ContextAfter: 1,
+})
+if err != nil {
+    return err
+}
 
-// 3. Generate embeddings/chat responses
-embeddings, err := llm.EmbedText("Hello world")
-response, err := llm.Predict("Question?", llama.SetTemperature(0.7))
+hits, err := engine.Search(ctx, search.Query{
+    Mode: search.ModeKeyword,
+    Text: "recover missed file events",
+    Filters: map[string]string{"language": "go"},
+    Limit: 10,
+})
 ```
 
-## ⚖️ Licensing Considerations
+`FindFiles` and `Grep` are FFF lanes. Grep uses an 80-match target, at most 20 matches per file, a five-line context cap on each side, a 384-byte output cap per line/context, a 16 MiB file cap, and a 500 ms search time budget. Since FFF completes the current file before paging, a page can return up to 99 matches. Use `NextFileOffset` for continuation. Keyword, semantic, and hybrid queries use Bleve. FFF path/grep scores are not mixed with Bleve scores; if a future unified search combines lanes, it should fuse ranks rather than raw score scales.
 
-### For Open-Source Models (Current Implementation)
+Hybrid search uses RRF in one Bleve request by default. Set `IncludeRankEvidence: true` only when per-channel ranks are needed; in hybrid mode it adds two extra Bleve searches.
 
-- ✅ **Apache 2.0**: nomic-embed-text-v1.5
-- ✅ **Llama 2**: Llama-3.2-3B (research use)
-- ✅ **MIT**: llava-phi-3-mini
-- ✅ **Redistributable**: All licenses allow binary redistribution
+## 4. Supply vectors from the driver
 
-### For LFM-2 Models (Future)
+The engine does not contain an embedding model. `VectorDimensions` is required when opening every index and must match the driver's model; Bleve supports up to 4096 dimensions. The default repository build enables vectors. Direct Go builds must include `-tags=vectors` and supply the query vector to semantic/hybrid search.
 
-- ⚠️ **Commercial License Required**: Contact Liquid.ai for redistribution rights
-- 💰 **Pricing**: Likely $X per binary or subscription model
-- 🔄 **Alternative**: Use Liquid.ai API instead of embedding
+`MissingVectors` returns bounded pages of current, non-stale documents with exact indexed text and its content hash. The caller can embed each item locally and attach the result. Stale documents caused by unreadable or skipped files are reported in evidence but are not actionable embedding inputs:
 
-## 🧪 Testing Your Implementation
-
-### Unit Tests
-
-```bash
-# Test embedded model loading
-go test ./vvfs/generation/embedded/... -v
-
-# Test AI service integration
-go test ./vvfs/generation/ai/... -v
-
-# Test complete pipeline
-go test ./vvfs/... -tags=integration -v
+```go
+cursor := ""
+for {
+    items, next, err := engine.MissingVectors(ctx, cursor, 32)
+    if err != nil {
+        return err
+    }
+    updates := make([]search.VectorUpdate, 0, len(items))
+    for _, item := range items {
+        vector, err := callerEmbed(ctx, item.Text) // caller-owned model/provider
+        if err != nil {
+            return err
+        }
+        updates = append(updates, search.VectorUpdate{
+            ID:                  item.ID,
+            ExpectedContentHash: item.ContentHash,
+            Vector:              vector,
+        })
+    }
+    if err := engine.UpsertVectors(ctx, updates...); err != nil {
+        return err
+    }
+    if next == "" {
+        break
+    }
+    cursor = next
+}
 ```
 
-### Performance Benchmarks
+The expected hash prevents a late vector result from being attached to content that changed while embedding was in progress. A changed file loses its previous vector and becomes visible in `MissingVectors` again.
 
-```bash
-# Benchmark embedding generation
-go test -bench=BenchmarkEmbedding ./vvfs/generation/models/... -benchmem
-
-# Profile memory usage
-go test -memprofile=mem.prof ./vvfs/generation/models/...
-go tool pprof mem.prof
+```go
+hits, err := engine.Search(ctx, search.Query{
+    Mode: search.ModeHybrid,
+    Text: "where is the watcher queue drained?",
+    Vector: queryVector, // caller supplied, same dimensions as the index
+    Filters: map[string]string{"language": "go"},
+    Limit: 10,
+})
 ```
 
-## 🚀 Production Deployment
+## 5. Index caller-owned records
 
-### Binary Size Expectations
+Caller records share the same Bleve corpus. Configure exact-match metadata fields at `Open`; `id`, `source`, and `path` are reserved for top-level filters:
 
-```
-Without models: ~20MB
-With open-source models: ~4.7GB
-With LFM-2 models: ~15GB (estimated)
-```
-
-### Hardware Requirements
-
-```yaml
-# Minimum specs
-cpu: "4 cores"
-ram: "8GB"
-storage: "10GB"
-
-# Recommended specs
-cpu: "8+ cores"
-ram: "16GB"
-gpu: "NVIDIA RTX 3060 or equivalent"  # Optional but recommended
-storage: "50GB"
+```go
+err := engine.Upsert(ctx, search.Document{
+    ID:      "manual:watcher-design",
+    Source:  "manual",
+    Title:   "Watcher recovery design",
+    Context: "filesystem indexing / reliability",
+    Text:    "On overflow, perform a full reconciliation...",
+    Metadata: map[string]string{
+        "kind": "design-note",
+    },
+    Vector: embedding, // optional, supplied by caller
+})
 ```
 
-### Runtime Configuration
+Caller IDs beginning with `file:` are reserved for FFF-managed files. Use `Delete` to remove caller-owned records.
 
-```yaml
-# config.yaml
-ai:
-  models:
-    embedding_dims: 768        # nomic-embed-text-v1.5
-    context_size: 4096         # Llama-3.2-3B
-    gpu_layers: -1             # Use all GPU layers
-    threads: 4                 # CPU threads
-    use_f16_memory: true       # VRAM optimization
-    use_mmap: true            # Memory mapping
+## 6. Choose tiers
+
+`StorageDisk` (default) persists the Bleve index locally; `StorageMemory` keeps search state ephemeral. Evidence remains on disk in separate disk/memory evidence directories. FFF mmap/content cache budgets are configured separately.
+
+`VectorQuality` selects Bleve's FAISS-backed `latency`, `recall`, or `memory_efficient` index optimization when the index is created. This changes the physical index and requires a rebuild; it is not a per-query exact/approximate switch. No custom exact vector-scan mode is implemented yet.
+
+## 7. Build in another Go driver
+
+Install the native dependencies to a writable prefix and expose them to cgo/pkg-config:
+
+```sh
+PREFIX="$HOME/.local/vvfs-search"
+make native NATIVE_PREFIX="$PREFIX"
+export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+export CGO_ENABLED=1
+export CGO_CFLAGS="-I$PREFIX/include"
+export CGO_LDFLAGS="-L$PREFIX/lib -Wl,-rpath,$PREFIX/lib"
+export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+go build -tags=vectors ./...
 ```
 
-## 🔧 Troubleshooting
-
-### Model Download Issues
-
-```bash
-# Check HuggingFace login
-huggingface-cli whoami
-
-# Manual download
-huggingface-cli download nomic-ai/nomic-embed-text-v1.5-GGUF \
-    nomic-embed-text-v1.5.Q4_K_M.gguf \
-    --local-dir models/temp
-
-cp models/temp/nomic-embed-text-v1.5.Q4_K_M.gguf \
-   vvfs/generation/embedded/lfm2-embed-7b.gguf
-```
-
-### Compilation Issues
-
-```bash
-# Clean build
-go clean -cache
-go mod tidy
-
-# Build with verbose output
-go build -v -o file4you .
-```
-
-### Runtime Issues
-
-```bash
-# Test model loading
-go run -c 'package main; import "fmt"; import embedded "github.com/.../embedded"; func main() { data, _ := embedded.GetEmbeddedModelData(embedded.ModelTypeEmbedding); fmt.Printf("Model size: %d bytes\n", len(data)) }'
-
-# Check temp file permissions
-ls -la /tmp/ | grep vvfs
-```
-
-## 📊 Performance Expectations
-
-### Embedding Generation
-
-- **Latency**: 50-200ms per document
-- **Throughput**: 5-20 documents/second
-- **Accuracy**: 95%+ semantic similarity
-
-### Chat Generation
-
-- **Latency**: 200-1000ms per response
-- **Throughput**: 1-5 responses/second
-- **Quality**: Coherent, context-aware responses
-
-### Vision Analysis
-
-- **Latency**: 300-2000ms per image
-- **Throughput**: 0.5-2 images/second
-- **Accuracy**: 80-90% object detection
-
-## 🎯 Next Steps
-
-1. **Download Models**: Run the appropriate download script
-2. **Validate**: Run `./scripts/validate_models.sh`
-3. **Test**: Run full test suite
-4. **Build**: Create production binary
-5. **Deploy**: Ship to production environment
-
-## 🔄 Model Updates
-
-### For Embedded Models
-
-```bash
-# Download new model versions
-./scripts/download_open_source_models.sh
-
-# Rebuild application
-go build -o file4you .
-
-# Deploy updated binary
-```
-
-### For Dynamic Models (Future Enhancement)
-
-```yaml
-# config.yaml - Dynamic loading
-ai:
-  model_registry:
-    enabled: true
-    base_path: "/opt/file4you/models"
-    update_interval: "24h"
-    fallback_to_embedded: true
-```
-
----
-
-**🎉 You now have production-ready GGUF models embedded in your Go binary!**
-
-The implementation supports real AI inference with excellent performance and is ready for enterprise deployment.
+The Rust bridge is exposed through a small C ABI. FFF paths currently cross that boundary as UTF-8; lossy or unsupported paths are reported and skipped. Support for arbitrary non-UTF-8 Linux path bytes is not yet implemented.

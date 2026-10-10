@@ -1,435 +1,115 @@
-# Virtual Vector Filesystem (vvfs)
+# Virtual VectorFS Search
 
-[![Go Version](https://img.shields.io/badge/go-1.25-blue.svg)](https://golang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub Repo](https://img.shields.io/badge/GitHub-virtual--vectorfs-181717.svg)](https://github.com/ZanzyTHEbar/virtual-vectorfs)
+A Linux-first local search library for files and caller-supplied records. FFF provides the file catalog, fuzzy path search, grep, and watch events. Bleve provides persisted full-text, metadata, and vector search.
 
-A high-performance, AI-enhanced virtual filesystem implementation in Go with **embedded LibSQL**, designed for modern file organization and management with advanced indexing, concurrent operations, and machine learning capabilities.
+The Go search engine does not create embeddings or call remote services. Drivers supply document and query vectors. Runtime indexing and queries stay local.
 
-> [!WARNING]
-> This repository is a WIP, use are your own risk. The project is in pre-alpha stages, the API is subject to change.
-> Check back frequently, the project is moving fast and will enter alpha hopefully soon.
+## Build and test
 
-## 🚀 Key Features
+Requirements: Go 1.25+, Rust/Cargo, pkg-config, a C/C++ toolchain, CMake, OpenBLAS/LAPACK, and OpenMP development libraries. On Debian/Ubuntu:
 
-### **Embedded Database Engine**
-
-- **Single Binary**: No external database server required
-- **LibSQL**: SQLite fork with modern features and vector support
-- **Compiled Extensions**: FTS5, JSON1, R*Tree, Vector, SQLean modules
-- **Production Ready**: Optimized for performance and reliability
-
-### **Advanced Search & AI Features**
-
-- **Vector Search**: Native LibSQL vector operations for semantic similarity
-- **Full-Text Search**: FTS5 virtual tables for document content indexing
-- **Spatial Queries**: R*Tree indexing for GPS-enabled files
-- **Text Processing**: SQLean text normalization and fuzzy matching
-- **Statistical Analysis**: SQLean statistical functions for search ranking
-
-## 🌟 Features
-
-### Core Filesystem Operations
-
-- **Hierarchical Directory Structures** - Advanced tree-based file organization
-- **Concurrent File Operations** - High-performance parallel processing using goroutines
-- **Intelligent File Organization** - Automated categorization and workflow management
-- **Conflict Resolution** - Smart handling of file conflicts with multiple strategies
-- **Git Integration** - Seamless version control operations within the filesystem
-
-### Advanced Indexing & Search
-
-- **Spatial Indexing** - KD-tree based spatial indexing for efficient file location
-- **Bitmap Indexing** - Roaring bitmaps for ultra-fast set operations
-- **Multi-dimensional Indexing** - Eytzinger layout optimization for cache efficiency
-- **Path-based Indexing** - Hierarchical path indexing for rapid traversal
-
-### AI/ML Integration
-
-- **Open-Source Models** - Production-ready GGUF models (Qwen3, Llama 3.2)
-- **Native GGUF Support** - Direct llama.cpp integration for optimal performance
-- **Hardware Acceleration** - GPU/CPU optimization with automatic detection
-- **Production Hardened** - Comprehensive error handling and resource management
-- **Commercial Friendly** - Permissive licenses for commercial use (Apache 2.0)
-
-### Database & Persistence
-
-- **Embedded LibSQL Integration** - Single-binary embedded database
-- **Workspace Management** - Multi-workspace support with isolated configurations
-- **Metadata Persistence** - Comprehensive file metadata storage
-- **Central Database** - Shared metadata across workspaces
-
-### Developer Experience
-
-- **Hexagonal Architecture** - Clean, testable, and maintainable code structure
-- **Comprehensive Testing** - Extensive test suites with table-driven tests
-- **Structured Logging** - Zerolog integration for observability
-- **Configuration Management** - Viper-based configuration with multiple sources
-- **CLI Integration** - Command-line interface for filesystem operations
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Go 1.25 or later
-- SQLite3 development libraries (optional, for enhanced performance)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/ZanzyTHEbar/virtual-vectorfs.git
-cd virtual-vectorfs
-
-# Install dependencies
-go mod download
-
-# Run tests
-go test ./...
-
-# Build the project
-go build ./...
+```sh
+sudo apt-get install build-essential cmake pkg-config libopenblas-dev libomp-dev liblapack-dev
+make rust-test
+make
+make test-fast
+make test
+make vet
 ```
 
-### Database Setup (Embedded LibSQL)
+`make` is the default vector-enabled build. It supplies Bleve's required `vectors` build tag and builds FFF `fff-search` 0.11.0 plus Bleve 2.6.0's compatible FAISS C API into `build/native`. Native sources are downloaded on the first build; runtime network access is not used. `make test-fast` runs the same vector-enabled suite without the race detector. Native output stays under ignored `build/` paths.
 
-Virtual VectorFS uses **embedded LibSQL** with all advanced features compiled into the single binary.
+For another Go module, install the native libraries into a writable prefix and expose them to cgo:
 
-#### **Quick Start (Embedded)**
-
-```bash
-# Build with all features
-make build-libsql-amd64
-make build-app-amd64
-
-# Run the single binary
-./bin/vvfs-amd64
+```sh
+PREFIX="$HOME/.local/vvfs-search"
+make native NATIVE_PREFIX="$PREFIX"
+export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+export CGO_ENABLED=1
+export CGO_CFLAGS="-I$PREFIX/include"
+export CGO_LDFLAGS="-L$PREFIX/lib -Wl,-rpath,$PREFIX/lib"
+export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
-#### **Custom Build**
+Import `github.com/ZanzyTHEbar/virtual-vectorfs/search`. Every index requires its embedding model's `VectorDimensions` (1–4096); there is no keyword-only index mode or built-in embedding model. The repository's default `make` build enables vectors. A direct Go build in another module must include `-tags=vectors`, as required by upstream Bleve, in addition to the native libraries above.
 
-```bash
-# Build LibSQL static libraries
-make build-libsql-amd64  # or build-libsql-arm64
-
-# Build application
-make build-app-amd64
-
-# Run smoke tests
-make smoke-test
-```
-
-### **Compiled Database Features**
-
-Virtual VectorFS includes these **statically compiled** features:
-
-### **AI Model Setup**
-
-Virtual VectorFS uses **open-source GGUF models** with permissive licenses for commercial use.
-
-#### **Prerequisites**
-
-```bash
-# Install Hugging Face CLI
-pipx install huggingface_hub[cli]
-# Or: pip install huggingface_hub[cli]
-
-# Optional: Install pv for progress bars
-sudo pacman -S pv  # Arch Linux
-sudo apt install pv  # Ubuntu/Debian
-```
-
-#### **Download Models**
-
-```bash
-# Enhanced download (recommended) - parallel, checksums, caching
-make models-download-v2
-
-# Or basic sequential download
-make models-download
-
-# Verify models
-make models-validate
-
-# Check model information
-make models-info
-```
-
-#### **Model Specifications**
-
-| Model | Purpose | Size | Context | License |
-|-------|---------|------|---------|---------|
-| **Qwen3-Embed-0.6B** | Text Embeddings | 265 MB | 2K tokens | Apache 2.0 |
-| **Qwen3-Chat-1.7B** | Conversational AI | 1.2 GB | 32K tokens | Apache 2.0 |
-| **Llama 3.2 Vision** | Vision-Language | 1.9 GB | 8K tokens | Llama 3.2 License |
-
-**Total Size:** ~3.4 GB (all models)
-
-#### **Enhanced Download Features (v2)**
-
-The `models-download-v2` target provides advanced features:
-
-- ✅ **Parallel Downloads** - 3x faster (10 min vs 30 min)
-- ✅ **SHA256 Verification** - Automatic integrity checks
-- ✅ **Model Caching** - CI/CD optimization (~3 sec on cached builds)
-- ✅ **Progress Bars** - Real-time download status (requires `pv`)
-- ✅ **Update Detection** - Check for new model versions
-- ✅ **Custom Repositories** - Enterprise/air-gapped support
-
-```bash
-# Configuration options
-PARALLEL_DOWNLOADS=5 make models-download-v2
-MODEL_CACHE_DIR="/opt/cache" make models-download-v2
-CUSTOM_MODEL_REPO="myorg/models" make models-download-v2
-```
-
-### **AI/ML Features**
-
-#### **Core SQLite Features**
-
-- ✅ **FTS5**: Full-text search with virtual tables and ranking
-- ✅ **JSON1**: Complete JSON manipulation and querying
-- ✅ **R*Tree**: Spatial indexing for GPS coordinates
-
-#### **LibSQL Native Features**
-
-- ✅ **Vector Operations**: Native vector data types and similarity functions
-- ✅ **Vector Search**: Cosine, L2, and other distance metrics
-- ✅ **Vector Indexing**: Efficient storage and retrieval
-
-#### **SQLean Extensions (Compiled-in)**
-
-- ✅ **Math**: `sqrt()`, `pow()`, `ceil()`, `floor()`, `exp()`, `log()`
-- ✅ **Stats**: `median()`, `percentile()`, `stddev()`, advanced aggregations
-- ✅ **Text**: `concat_ws()`, `trim()`, text normalization functions
-- ✅ **Fuzzy**: `damerau_levenshtein()`, `jaro_winkler()`, string similarity
-- ✅ **Crypto**: `sha256()`, `md5()`, cryptographic hash functions
-
-### **Advanced Usage Examples**
-
-#### **Vector Search**
-
-```sql
--- Vector similarity search
-SELECT * FROM files
-WHERE vector_distance_cos(embedding, vector32('[1,2,3]')) < 0.8;
-```
-
-#### **Full-Text Search**
-
-```sql
--- FTS5 content search
-SELECT * FROM files_fts WHERE files_fts MATCH 'database vector';
-```
-
-#### **Spatial Queries**
-
-```sql
--- R*Tree GPS queries
-SELECT * FROM file_gps_rtree
-WHERE min_lat <= 40.7 AND max_lat >= 40.7
-  AND min_lon <= -74.0 AND max_lon >= -74.0;
-```
-
-#### **SQLean Text Processing**
-
-```sql
--- Normalized text search
-SELECT * FROM files
-WHERE file_name_normalized LIKE concat_ws('%', 'report', '%');
-```
-
-#### **Statistical Analysis**
-
-```sql
--- Statistical aggregations
-SELECT median(vector_distance_cos(embedding, query_vector)) as median_distance
-FROM search_results;
-```
-
-### Basic Usage
+## Driver API
 
 ```go
 package main
 
 import (
-    "context"
-    "log"
+	"context"
+	"fmt"
+	"log"
 
-    "github.com/ZanzyTHEbar/virtual-vectorfs/vvfs/filesystem"
-    "github.com/ZanzyTHEbar/virtual-vectorfs/vvfs/db"
-    "github.com/ZanzyTHEbar/virtual-vectorfs/vvfs/ports"
+	"github.com/ZanzyTHEbar/virtual-vectorfs/search"
 )
 
 func main() {
-    // Create database provider
-    centralDB, err := db.NewCentralDBProvider()
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer centralDB.Close()
+	ctx := context.Background()
+	engine, err := search.Open(ctx, search.Options{
+		Root:             "/home/me/project",
+		IndexPath:        "/home/me/.cache/vvfs/project.bleve",
+		Storage:          search.StorageDisk,
+		VectorDimensions: 384, // example only; must match the driver's embedding model
+		FilterFields:     []string{"kind", "language"},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer engine.Close()
 
-    // Create terminal interactor
-    interactor := ports.NewTerminalInteractor()
+	report, err := engine.SyncFiles(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("indexed %d of %d files; evidence: %s\n",
+		report.Indexed, report.Scanned, report.EvidencePath)
 
-    // Create filesystem manager
-    fs, err := filesystem.New(interactor, centralDB)
-    if err != nil {
-        log.Fatal(err)
-    }
+	files, err := engine.FindFiles(ctx, search.FileQuery{Text: "watcher", Limit: 10})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("FFF path hits: %d\n", len(files.Matches))
 
-    // Index a directory
-    ctx := context.Background()
-    err = fs.IndexDirectory(ctx, "/path/to/directory", filesystem.DefaultIndexOptions())
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Build directory tree with analysis
-    tree, analysis, err := fs.BuildDirectoryTreeWithAnalysis(ctx, "/path/to/directory", filesystem.DefaultTraversalOptions())
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    log.Printf("Indexed %d files, %d directories", analysis.FileCount, analysis.DirectoryCount)
-    _ = tree
+	hits, err := engine.Search(ctx, search.Query{
+		Mode:  search.ModeKeyword,
+		Text:  "watch event overflow",
+		Limit: 10,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Bleve keyword hits: %d\n", len(hits))
 }
 ```
 
-## 📖 Documentation
+See [Quick Start](docs/QUICK_START.md) for vector provision, grep modes, records, and storage options. [Architecture](docs/ARCHITECTURE.md) documents component boundaries, update recovery, tiers, evidence, and current limits.
 
-### Architecture Overview
+## Search lanes
 
-The project follows a **hexagonal architecture** (ports and adapters) pattern:
+- `FindFiles`: FFF fuzzy file/path search with scores and pagination.
+- `Grep`: FFF plain, regex, or fuzzy content search with line/context evidence and pagination.
+- `Search(ModeKeyword)`: Bleve full-text search across title, text, and context fields.
+- `Search(ModeSemantic)`: Bleve approximate vector search.
+- `Search(ModeHybrid)`: Bleve full-text + vector retrieval with RRF.
+- `MissingVectors` / `UpsertVectors`: let a driver create offline vectors and attach them only to matching content hashes.
 
-```text
-├── ports/           # Application ports (interfaces)
-├── filesystem/      # Core filesystem business logic
-│   ├── interfaces/  # Service interfaces
-│   ├── services/    # Service implementations
-│   ├── types/       # Data types and DTOs
-│   ├── options/     # Configuration options
-│   └── common/      # Shared utilities
-├── trees/           # Tree data structures and algorithms
-├── indexing/        # Advanced indexing implementations
-├── embedding/       # AI/ML embedding providers
-├── db/              # Database providers and interfaces
-├── memory/          # In-memory data structures
-└── config/          # Configuration management
-```
+Mode requirements are explicit: keyword requires text; semantic requires a query vector; hybrid requires both. The engine never silently invokes a model or changes modes.
 
-### Key Components
+Hybrid search uses Bleve's RRF fusion in one search request by default. Set `Query.IncludeRankEvidence` only when individual keyword/vector ranks are needed; in hybrid mode, this adds two searches. Otherwise hits omit `Ranks`.
 
-#### Filesystem Services
+## Data and locality
 
-- **DirectoryService** - Directory indexing and tree building
-- **FileOperations** - File manipulation operations
-- **OrganizationService** - Intelligent file organization
-- **ConflictResolver** - File conflict detection and resolution
-- **GitService** - Git repository operations
+`FilterFields` and vector schema are fixed per index; changing them requires rebuilding the index. `SyncFiles` reads FFF's inventory; the engine does not run a second filesystem traversal. FFF owns its watch and file catalog. Go reads eligible file content into bounded batches for Bleve. Create/modify/delete/rename events update the local index asynchronously; overflow triggers a full reconciliation.
 
-#### Advanced Features
+Bleve data is persisted locally in disk mode or kept ephemeral in memory mode. Disk evidence is written to `<IndexPath>.evidence/`; memory-index evidence is isolated in `<IndexPath>.memory.evidence/`. Each contains a summary manifest and per-file JSONL with IDs, paths, SHA-256 hashes, byte sizes, vector availability, and indexing status—not source text. Memory-mode evidence retains every successful sync generation without automatic expiry; remove that sidecar directory when its audit history is no longer needed. The index and evidence directories must be outside the FFF root.
 
-- **ConcurrentTraverser** - High-performance parallel directory traversal
-- **KDTree** - Spatial indexing for file locations
-- **RoaringBitmaps** - Efficient set operations for file indexing
-- **go-llama.cpp** - Native GGUF model execution via llama.cpp bindings
+`Status.LastSyncIndexedFiles` reports the last successful full sync; watcher-driven file updates are asynchronous and do not change this historical count. `Upsert` accepts a variadic batch as one Bleve write, so callers should submit bounded chunks for caller-owned records.
 
-## 🔧 Configuration
+The current file policy indexes one UTF-8 text document per file, rejects binary/NUL/invalid UTF-8 content, and skips files over `MaxFileBytes`. FFF's C/Rust boundary is UTF-8; unsupported or lossy paths are reported rather than indexed under a corrupted path. FFF grep is bounded to 16 MiB files, 20 matches per file, five context lines, and 384 bytes per returned line/context; pages use a match target and may overshoot by at most the per-file cap. File chunking, document parsing, and offline embedding are not included in this initial engine.
 
-Create a configuration file at `~/.config/vvfs/config.toml`:
+## Product boundary
 
-```toml
-[database]
-type = "sqlite3"
-dsn = "file:~/vvfs/central.db"
-
-[filesystem]
-cache_dir = "~/.config/vvfs/.cache"
-max_concurrent_operations = 10
-
-[embedding]
-default_provider = "llama"
-# Defaults to ollama model directory
-model_path = "~/.config/vvfs/models"
-
-[logging]
-level = "info"
-format = "json"
-```
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
-
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with coverage
-go test -cover ./...
-
-# Run integration tests
-go test -tags=integration ./...
-
-# Run specific test
-go test -run TestConcurrentTraverser ./vvfs/filesystem/
-```
-
-## 📊 Performance
-
-The filesystem is optimized for high-performance operations:
-
-- **Concurrent Processing** - Utilizes all available CPU cores
-- **Memory-Efficient** - Streaming operations for large file sets
-- **Cache-Optimized** - Eytzinger layout for improved cache locality
-- **Database Performance** - Connection pooling and prepared statements
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Write tests for your changes
-4. Ensure all tests pass: `go test ./...`
-5. Follow conventional commit format for commits
-6. Submit a pull request
-
-### Development Guidelines
-
-- **Code Style** - Follow standard Go formatting (`go fmt`)
-- **Testing** - Write table-driven tests for new functionality
-- **Documentation** - Update documentation for API changes
-- **Performance** - Include benchmarks for performance-critical code
-- **Security** - Validate inputs and handle errors properly
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **Roaring Bitmaps** - For efficient bitmap operations
-- **llama.cpp** - For native GGUF model inference
-- **go-llama.cpp** - Go bindings for llama.cpp
-- **Turso** - For distributed SQLite database
-- **Go Community** - For the excellent standard library and ecosystem
-
-## 🔗 Related Projects
-
-- [go-fuse](https://github.com/hanwen/go-fuse) - FUSE filesystem implementation
-- [bleve](https://github.com/blevesearch/bleve) - Full-text search library
-- [badger](https://github.com/dgraph-io/badger) - Key-value database
-
-## 📞 Support
-
-For questions and support:
-
-- Open an issue on [GitHub](https://github.com/ZanzyTHEbar/virtual-vectorfs/issues)
-- Check the [documentation](docs/) for detailed guides
-- Join our community discussions
-
----
-
-Built with ❤️ in Go
+This is a search library, not an AI Agent application. It contains no LLM, embedding model, prompt/harness code, agent-memory graph, SQL database server, organization/move workflow, or FUSE mount. Offline embedding can be added later as a separate opt-in component that uses the vector task/update API.

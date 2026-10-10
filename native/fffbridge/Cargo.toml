@@ -1,0 +1,19 @@
+[package]
+name = "fffbridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+fff-search = "=0.11.0"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+panic = "unwind"

@@ -1,5 +1,4 @@
 run:
-  # Skip directories (regex) from linting
   skip-dirs:
     - '^extra$'
     - '^ai-docs$'
