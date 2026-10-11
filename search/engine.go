@@ -1,3 +1,7 @@
+// Package search combines FFF file discovery with local Bleve text, metadata,
+// and vector search. It supports Linux; semantic and hybrid queries require
+// caller-supplied vectors.
+// Build with -tags=vectors and the native FFF and FAISS libraries installed.
 package search
 
 import (

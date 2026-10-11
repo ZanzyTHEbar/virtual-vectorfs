@@ -6,9 +6,10 @@ The first build needs Linux, Go 1.25+, Rust stable, Cargo, pkg-config, a C/C++ t
 
 ```sh
 sudo apt-get install build-essential cmake pkg-config libopenblas-dev libomp-dev liblapack-dev
+git clone https://github.com/ZanzyTHEbar/virtual-vectorfs.git
+cd virtual-vectorfs
 make rust-test
-make test-fast
-make native
+make
 make test
 ```
 
@@ -68,12 +69,11 @@ if err != nil {
 hits, err := engine.Search(ctx, search.Query{
     Mode: search.ModeKeyword,
     Text: "recover missed file events",
-    Filters: map[string]string{"language": "go"},
     Limit: 10,
 })
 ```
 
-`FindFiles` and `Grep` are FFF lanes. Grep uses an 80-match target, at most 20 matches per file, a five-line context cap on each side, a 384-byte output cap per line/context, a 16 MiB file cap, and a 500 ms search time budget. Since FFF completes the current file before paging, a page can return up to 99 matches. Use `NextFileOffset` for continuation. Keyword, semantic, and hybrid queries use Bleve. FFF path/grep scores are not mixed with Bleve scores; if a future unified search combines lanes, it should fuse ranks rather than raw score scales.
+`FindFiles` and `Grep` are FFF lanes. Grep accepts a match target up to 80, at most 20 matches per file, a five-line context cap on each side, a 384-byte output cap per line/context, a 16 MiB file cap, and a 500 ms search time budget. Since FFF completes the current file before paging, a page can return up to 99 matches. Use `NextFileOffset` for continuation. Keyword, semantic, and hybrid queries use Bleve. FFF path/grep scores are not mixed with Bleve scores; if a future unified search combines lanes, it should fuse ranks rather than raw score scales.
 
 Hybrid search uses RRF in one Bleve request by default. Set `IncludeRankEvidence: true` only when per-channel ranks are needed; in hybrid mode it adds two extra Bleve searches.
 
@@ -119,7 +119,6 @@ hits, err := engine.Search(ctx, search.Query{
     Mode: search.ModeHybrid,
     Text: "where is the watcher queue drained?",
     Vector: queryVector, // caller supplied, same dimensions as the index
-    Filters: map[string]string{"language": "go"},
     Limit: 10,
 })
 ```
@@ -144,6 +143,8 @@ err := engine.Upsert(ctx, search.Document{
 
 Caller IDs beginning with `file:` are reserved for FFF-managed files. Use `Delete` to remove caller-owned records.
 
+FFF-managed files do not automatically have `language` or `kind` metadata. To search the caller-owned record above by metadata, use `Filters: map[string]string{"kind": "design-note"}` with a keyword query for `"overflow"`.
+
 ## 6. Choose tiers
 
 `StorageDisk` (default) persists the Bleve index locally; `StorageMemory` keeps search state ephemeral. Evidence remains on disk in separate disk/memory evidence directories. FFF mmap/content cache budgets are configured separately.
@@ -152,7 +153,7 @@ Caller IDs beginning with `file:` are reserved for FFF-managed files. Use `Delet
 
 ## 7. Build in another Go driver
 
-Install the native dependencies to a writable prefix and expose them to cgo/pkg-config:
+The Go import does not install native libraries. From a checkout of this repository, run these commands at its root to install them into a writable prefix and expose them to cgo/pkg-config:
 
 ```sh
 PREFIX="$HOME/.local/vvfs-search"
@@ -162,6 +163,12 @@ export CGO_ENABLED=1
 export CGO_CFLAGS="-I$PREFIX/include"
 export CGO_LDFLAGS="-L$PREFIX/lib -Wl,-rpath,$PREFIX/lib"
 export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+From the consuming Go module (with the exported environment still set):
+
+```sh
+go get github.com/ZanzyTHEbar/virtual-vectorfs/search@latest
 go build -tags=vectors ./...
 ```
 

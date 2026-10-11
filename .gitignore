@@ -6,8 +6,7 @@ extra/
 ai-docs/
 
 # Generated local native dependencies and build outputs.
-/build/artifacts/**
-!/build/artifacts/.gitkeep
+/build/artifacts/
 /build/deps/
 /build/cargo/
 /build/faiss/
