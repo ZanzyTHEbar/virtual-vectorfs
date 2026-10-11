@@ -3,7 +3,7 @@
 **Status:** Work sequence approved on 2026-10-11; the companion agent has not been built.
 **Authority:** This file is the source of truth for deliverables, dependencies, and acceptance gates until the companion has its own repository and this plan is deliberately transferred there. Keep issue trackers and execution logs linked to these IDs, not as competing plans. Update this file when a decision changes scope or a gate; do not mark a task complete because code was written or a test was intended to run.
 
-This is a plan for a **separate Go product** that imports `github.com/ZanzyTHEbar/virtual-vectorfs/search`. This repository remains a search-only library. F0 includes the already-uncommitted public-readiness cleanup in this repository plus this plan and its README link; do not overwrite or blend that work into agent implementation.
+This is a plan for a **separate Go product** that imports `github.com/ZanzyTHEbar/virtual-vectorfs/search`. This repository remains a search-only library. F0 published the public-readiness cleanup, this plan, and its README link together; do not blend that work into agent implementation.
 
 ## Delivery contract
 
@@ -19,7 +19,7 @@ This is a plan for a **separate Go product** that imports `github.com/ZanzyTHEba
 
 | ID | Needs | Atomic deliverable | Observable gate | State |
 | --- | --- | --- | --- | --- |
-| **F0** | — | Review the existing public-readiness cleanup, this plan, and its README link together; publish without agent implementation and without rewriting unrelated work. | Search library's vector-enabled build, race tests, vet, Rust checks, and final diff review pass; published README link resolves to the published plan; publishing requires an explicit user request. | Cleanup and plan present locally, uncommitted |
+| **F0** | — | Review the existing public-readiness cleanup, this plan, and its README link together; publish without agent implementation and without rewriting unrelated work. | Search library's vector-enabled build, race tests, vet, Rust checks, and final diff review pass; published README link resolves to the published plan; publishing requires an explicit user request. | Complete — published in `8c03f5c`; remote plan link verified |
 | **F1** | — | Agree on the companion's write-scope, threat, retention, hardware, privacy, and undo contract; record supported and explicitly refused operations. | Every supported write has preconditions, durable recovery, undo, and conflict behavior; user accepts assumptions before W1. | Planned |
 | **F2** | F0 | Add a bounded version-aware read/expand API for indexed documents; keep previews and exact match evidence distinct. | Tests cover caller records, changed/stale/missing files, renames, size limits, and verified source ranges. Grep's file offset and display-relative match ranges are interpreted correctly even for truncated lines; caller-record ranges are independently validated. | Planned |
 | **F3** | F0 | Create a separate companion Go module and read-only `doctor` CLI for Linux, native libraries, search import, and local model endpoints. No agent loop or write tools. | Fresh downstream `go build -tags=vectors ./...` works with installed native dependencies; missing dependencies fail clearly and corpus files remain unchanged. | Planned |
@@ -73,10 +73,10 @@ No model or REPL path receives a mutation capability until W2 and the correspond
 
 ## Execution and handoff rules
 
-- Finish F0 (including the plan file and README link) before other changes; then F2 and F3 may proceed independently. R4 can proceed alongside R1/R2. Safety design W1 may begin after R4 while read-only R5–R8 continue. Serialize changes to the broker protocol and operation implementations; later routing/UI work must reuse its existing authority boundary.
+- F0 is verified; F2 and F3 may proceed independently. R4 can proceed alongside R1/R2. Safety design W1 may begin after R4 while read-only R5–R8 continue. Serialize changes to the broker protocol and operation implementations; later routing/UI work must reuse its existing authority boundary.
 - For each ID, keep its actual owner, branch/PR, runnable gate definition, validation evidence, blocker, and next action with the execution record. Mark this table `Complete` only after gate re-verification and integration review, not on implementation intent. An abandoned gate is a handoff, never success.
 - The companion repository should take over this file as its canonical plan once it exists; retain a link here, and do not maintain two independently edited copies. Memory Bank (if available) is for durable architecture decisions, not this backlog; execution tracking is not a second source of truth.
-- The existing public-readiness diff and this plan are local work until explicitly committed/pushed. Publishing, native installation on other machines, and model/hardware behavior are not verified by the existence of this document.
+- F0 was published and its README link verified on `main`. Native installation on other machines and model/hardware behavior are not verified by the existence of this document; each later gate still requires its own evidence.
 
 ## Source checks behind the plan
 
