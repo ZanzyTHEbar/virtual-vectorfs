@@ -1,0 +1,1081 @@
+--- a/src/error.rs
++++ b/src/error.rs
+@@ -3,6 +3,10 @@
+ #[derive(thiserror::Error, Debug)]
+ #[non_exhaustive]
+ pub enum Error {
++    #[error("Scan request failed: {0}")]
++    ScanRequestFailed(&'static str),
++    #[error("Invalid read policy: {0}")]
++    InvalidReadPolicy(&'static str),
+     #[error("Thread panicked")]
+     ThreadPanic,
+     #[error("Invalid path {0}")]
+--- a/src/file_picker.rs
++++ b/src/file_picker.rs
+@@ -543,6 +543,56 @@
+     }
+ }
+ 
++/// Filesystem policy selected before any picker scan starts.
++///
++/// This is not an OS sandbox. Callers must keep the absolute, non-symlink root,
++/// its ancestry, mounts and indexed paths stable against adversarial replacement,
++/// and must not mutate the picker's public `base_path` after construction.
++#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
++pub enum ReadPolicy {
++    /// Existing Git discovery, status, history and ignore-file behavior.
++    #[default]
++    Ambient,
++    /// No Git operations or ignore-file interpretation, including root-local
++    /// `.ignore` and `.gitignore`. Those files are ordinary searchable files.
++    /// Includes hidden files but excludes `.git` entries and all symlinks.
++    /// Requires the ripgrep backend and `follow_symlinks: false`.
++    RootOnly,
++}
++
++impl ReadPolicy {
++    pub(crate) fn allows_path(self, base: &Path, path: &Path) -> bool {
++        if self == Self::Ambient {
++            return true;
++        }
++        let Ok(relative) = path.strip_prefix(base) else {
++            return false;
++        };
++        // Validate the entire lexical path before a missing component can
++        // short-circuit metadata checks for removal events.
++        if relative.components().any(
++            |component| !matches!(component, std::path::Component::Normal(name) if name != ".git"),
++        ) {
++            return false;
++        }
++        let mut current = base.to_path_buf();
++        for component in relative.components() {
++            let std::path::Component::Normal(name) = component else {
++                return false;
++            };
++            current.push(name);
++            match std::fs::symlink_metadata(&current) {
++                Ok(metadata) if metadata.file_type().is_symlink() => return false,
++                Ok(_) => {}
++                // A removal event needs no read of the missing leaf.
++                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return true,
++                Err(_) => return false,
++            }
++        }
++        true
++    }
++}
++
+ /// Options for creating a [`FilePicker`].
+ pub struct FilePickerOptions {
+     pub base_path: String,
+@@ -606,6 +656,7 @@
+     enable_fs_root_scanning: bool,
+     enable_home_dir_scanning: bool,
+     git_recency_config: GitRecencyConfig,
++    read_policy: ReadPolicy,
+     trace_span: tracing::Span,
+     trace_id: String,
+ }
+@@ -693,6 +744,11 @@
+         self.git_recency_config
+     }
+ 
++    /// Return the immutable filesystem policy chosen at construction.
++    pub fn read_policy(&self) -> ReadPolicy {
++        self.read_policy
++    }
++
+     pub fn trace_id(&self) -> &str {
+         &self.trace_id
+     }
+@@ -872,9 +928,50 @@
+     /// Always prefer new_with_shared_state for the consumer application, use this only if you know
+     /// what you are doing. This won't spawn the backgraound watcher and won't walk the file tree.
+     pub fn new(options: FilePickerOptions) -> Result<Self, Error> {
+-        crate::git::tune_libgit2_for_local_reads();
++        Self::new_with_read_policy(options, ReadPolicy::Ambient)
++    }
++
++    /// Create an unscanned picker with an explicit filesystem policy.
++    ///
++    /// Returns an error for RootOnly with symlink following or a non-ripgrep
++    /// backend, before any scan or Git initialization is started.
++    pub fn new_with_read_policy(
++        options: FilePickerOptions,
++        read_policy: ReadPolicy,
++    ) -> Result<Self, Error> {
++        if read_policy == ReadPolicy::RootOnly {
++            if options.follow_symlinks {
++                return Err(Error::InvalidReadPolicy("RootOnly cannot follow symlinks"));
++            }
++            if cfg!(feature = "zlob") {
++                return Err(Error::InvalidReadPolicy(
++                    "RootOnly requires the ripgrep backend",
++                ));
++            }
++        } else {
++            crate::git::tune_libgit2_for_local_reads();
++        }
+ 
+         let path = PathBuf::from(&options.base_path);
++        // Remove trailing separators before lstat: `link/` would otherwise
++        // dereference a directory symlink even with symlink_metadata.
++        let path = if read_policy == ReadPolicy::RootOnly {
++            path.components().collect()
++        } else {
++            path
++        };
++        if read_policy == ReadPolicy::RootOnly
++            && (!path.is_absolute()
++                || path
++                    .components()
++                    .any(|c| matches!(c, std::path::Component::ParentDir))
++                || !std::fs::symlink_metadata(&path)
++                    .is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink()))
++        {
++            return Err(Error::InvalidReadPolicy(
++                "RootOnly requires an absolute non-symlink directory",
++            ));
++        }
+         if !path.exists() {
+             error!("Base path does not exist: {}", options.base_path);
+             return Err(Error::InvalidPath(path));
+@@ -930,6 +1027,7 @@
+             enable_fs_root_scanning: options.enable_fs_root_scanning,
+             enable_home_dir_scanning: options.enable_home_dir_scanning,
+             git_recency_config: options.git_recency,
++            read_policy,
+             trace_span,
+             trace_id,
+         })
+@@ -942,7 +1040,23 @@
+         shared_frecency: SharedFrecency,
+         options: FilePickerOptions,
+     ) -> Result<(), Error> {
+-        let picker = Self::new(options)?;
++        Self::new_with_shared_state_and_read_policy(
++            shared_picker,
++            shared_frecency,
++            options,
++            ReadPolicy::Ambient,
++        )
++    }
++
++    /// Start shared indexing and watching with a policy fixed before startup.
++    /// See [`ReadPolicy`] for RootOnly semantics and stable-tree assumptions.
++    pub fn new_with_shared_state_and_read_policy(
++        shared_picker: SharedFilePicker,
++        shared_frecency: SharedFrecency,
++        options: FilePickerOptions,
++        read_policy: ReadPolicy,
++    ) -> Result<(), Error> {
++        let picker = Self::new_with_read_policy(options, read_policy)?;
+ 
+         info!(
+             "Spawning background threads: base_path={}, warmup={}, content_indexing={}, mode={:?}",
+@@ -965,15 +1079,12 @@
+         let path = picker.base_path.clone();
+         let trace_span = picker.trace_span.clone();
+ 
+-        // Pre-arm `scanning` BEFORE publishing the new picker. `ScanJob::spawn`
+-        // also sets it, but that runs after this function returns; consumers
++        // Reserve the initial scan BEFORE publishing the picker; consumers
+         // (e.g. lua `wait_for_initial_scan` after `restart_index_in_path`)
+         // that grab the signal Arc between publish and spawn would otherwise
+-        // observe scanning=false and skip the wait, racing the walker. The
++        // otherwise observe scanning=false and skip the wait, racing the walker. The
+         // race is wide on Windows CI where notify is slow.
+-        signals
+-            .scanning
+-            .store(true, std::sync::atomic::Ordering::Release);
++        signals.reserve_initial();
+ 
+         // Update the watch base before publishing the new picker.
+         shared_picker.rebase_watches(&path);
+@@ -1001,6 +1112,7 @@
+                 follow_symlinks,
+                 enable_fs_root_scanning,
+                 enable_home_dir_scanning,
++                read_policy,
+             },
+         )
+         .spawn();
+@@ -1020,7 +1132,9 @@
+         self.signals.scanning.store(true, Ordering::Relaxed);
+         self.scanned_files_count.store(0, Ordering::Relaxed);
+ 
+-        let git_workdir = FileSync::discover_git_workdir(&self.base_path);
++        let git_workdir = (self.read_policy == ReadPolicy::Ambient)
++            .then(|| FileSync::discover_git_workdir(&self.base_path))
++            .flatten();
+         let git_handle = git_workdir.clone().map(FileSync::spawn_git_status);
+ 
+         let empty_frecency = SharedFrecency::default();
+@@ -1031,6 +1145,7 @@
+             &empty_frecency,
+             self.mode,
+             self.follow_symlinks,
++            self.read_policy,
+         )?;
+ 
+         self.sync_data = sync;
+@@ -1643,6 +1758,9 @@
+     #[tracing::instrument(skip(self),level = Level::DEBUG)]
+     pub fn handle_create_or_modify(&mut self, path: impl AsRef<Path> + Debug) -> Option<&FileItem> {
+         let path = path.as_ref();
++        if !self.read_policy.allows_path(&self.base_path, path) {
++            return None;
++        }
+ 
+         if let Some(idx) = self.sync_data.find_file_index(path, &self.base_path) {
+             let slot = if idx < self.sync_data.base_count {
+@@ -1715,6 +1833,9 @@
+     /// which indicates that it's time to trigger a new sync
+     #[tracing::instrument(skip(self))]
+     pub fn add_new_file(&mut self, path: &Path) -> Option<&FileItem> {
++        if !self.read_policy.allows_path(&self.base_path, path) {
++            return None;
++        }
+         // On Windows `pathdiff::diff_paths` is byte-wise, so a short-name
+         // input never shares a prefix with the canonicalized base_path and
+         // the resulting relative path becomes absolute. Canonicalize first.
+@@ -2081,6 +2202,7 @@
+         shared_frecency: &SharedFrecency,
+         mode: FFFMode,
+         follow_symlinks: bool,
++        read_policy: ReadPolicy,
+     ) -> Result<FileSync, Error> {
+         let scan_start = std::time::Instant::now();
+         info!("SCAN: Starting filesystem walk and git status (async)");
+@@ -2099,6 +2221,7 @@
+             follow_symlinks,
+             bg_threads,
+             synced_files_count,
++            read_policy,
+         )?;
+         let ignore_rules = ignore_rules.map(Arc::new);
+ 
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -156,6 +156,7 @@
+ mod git_status_worker;
+ mod ignore;
+ mod scan;
++pub use scan::RescanTicket;
+ mod score;
+ mod sort_buffer;
+ 
+--- a/src/scan.rs
++++ b/src/scan.rs
+@@ -1,12 +1,14 @@
++use parking_lot::Mutex;
+ use std::path::PathBuf;
+ use std::sync::Arc;
+ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
++use std::time::{Duration, Instant};
+ 
+ use tracing::{error, info};
+ 
+ use crate::FileSync;
+ use crate::error::Error;
+-use crate::file_picker::FFFMode;
++use crate::file_picker::{FFFMode, ReadPolicy};
+ use crate::index::{build_bigram_index, sniff_binary_for_non_indexable};
+ use crate::parallelism::BACKGROUND_THREAD_POOL;
+ use crate::shared::{SharedFilePicker, SharedFrecency};
+@@ -21,12 +23,75 @@
+     pub(crate) watcher_ready: Arc<AtomicBool>,
+     /// Indicates that that owning picker was requested to shut down
+     pub(crate) cancelled: Arc<AtomicBool>,
+-    /// Used to resolve conflicts if multiple rescans were triggered in a queue
+-    pub(crate) rescan_pending: Arc<AtomicBool>,
++    scheduler: Arc<Mutex<ScanState>>,
+     /// Set by `post_scan_snapshot`, cleared by `PostScanSnapshot::drop`.
+     /// DO NOT set or clear this manually — it is managed exclusively by the
+     /// PostScanSnapshot lifecycle.
+     pub(crate) post_scan_indexing_active: Arc<AtomicBool>,
++}
++
++#[derive(Default)]
++struct ScanState {
++    running: bool,
++    requested: u64,
++    completed: u64,
++    failed_through: u64,
++}
++
++impl ScanSignals {
++    pub(crate) fn reserve_initial(&self) {
++        self.scheduler.lock().running = true;
++        self.scanning.store(true, Ordering::Release);
++    }
++}
++
++/// Completion fence for a scan reserved after this request, bound to one picker.
++/// A later successfully completed scan may satisfy coalesced earlier requests.
++#[derive(Clone)]
++pub struct RescanTicket {
++    signals: ScanSignals,
++    sequence: u64,
++}
++
++impl std::fmt::Debug for RescanTicket {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("RescanTicket")
++            .field("sequence", &self.sequence)
++            .finish()
++    }
++}
++
++impl RescanTicket {
++    /// Monotonic request identity, scoped to the picker which issued the ticket.
++    pub fn sequence(&self) -> u64 {
++        self.sequence
++    }
++
++    /// Wait for this request's successful native scan, not a sample of idle flags.
++    /// Returns false on timeout; cancellation or scan failure returns an error.
++    pub fn wait(&self, timeout: Duration) -> Result<bool, Error> {
++        let start = Instant::now();
++        loop {
++            {
++                let state = self.signals.scheduler.lock();
++                if state.completed >= self.sequence {
++                    return Ok(true);
++                }
++                if state.failed_through >= self.sequence
++                    || self.signals.cancelled.load(Ordering::Acquire)
++                {
++                    return Err(Error::ScanRequestFailed(
++                        "requested scan failed or picker was cancelled",
++                    ));
++                }
++            }
++            let remaining = timeout.saturating_sub(start.elapsed());
++            if remaining.is_zero() {
++                return Ok(false);
++            }
++            std::thread::sleep(remaining.min(Duration::from_millis(10)));
++        }
++    }
+ }
+ 
+ /// Which optional phases a scan should run.
+@@ -40,6 +105,7 @@
+     pub(crate) follow_symlinks: bool,
+     pub(crate) enable_fs_root_scanning: bool,
+     pub(crate) enable_home_dir_scanning: bool,
++    pub(crate) read_policy: ReadPolicy,
+ }
+ 
+ /// A fully-configured scan job ready to run on a background thread.
+@@ -48,6 +114,7 @@
+ /// current `FilePicker`) or [`ScanJob::initial`] (for the bootstrap
+ /// scan, before the picker is published to `SharedPicker`).
+ pub(crate) struct ScanJob {
++    sequence: u64,
+     shared_picker: SharedFilePicker,
+     shared_frecency: SharedFrecency,
+     base_path: PathBuf,
+@@ -65,25 +132,49 @@
+     pub fn new_rescan(
+         shared_picker: &SharedFilePicker,
+         shared_frecency: &SharedFrecency,
+-    ) -> Result<Option<Self>, Error> {
++    ) -> Result<(Option<Self>, RescanTicket), Error> {
+         let guard = shared_picker.read()?;
+         let picker = guard.as_ref().ok_or(Error::FilePickerMissing)?;
+ 
+-        if picker.is_scan_active()
+-            || picker
+-                .signals
+-                .post_scan_indexing_active
+-                .load(Ordering::Acquire)
+-        {
+-            return Ok(None);
+-        }
+-
+-        let mode = picker.mode();
+         let signals = picker.scan_signals();
+-        let scanned_files_counter = picker.scanned_files_counter();
+-        let base_path = picker.base_path().to_path_buf();
+-        let trace_span = picker.trace_span();
+-
++        let mut state = signals.scheduler.lock();
++        if signals.cancelled.load(Ordering::Acquire) {
++            return Err(Error::ScanRequestFailed("picker was cancelled"));
++        }
++        state.requested = state
++            .requested
++            .checked_add(1)
++            .ok_or(Error::ScanRequestFailed("rescan sequence exhausted"))?;
++        let sequence = state.requested;
++        let ticket = RescanTicket {
++            signals: signals.clone(),
++            sequence,
++        };
++        if state.running {
++            return Ok((None, ticket));
++        }
++        state.running = true;
++        signals.scanning.store(true, Ordering::Release);
++        drop(state);
++        Ok((
++            Some(Self::from_picker(
++                shared_picker,
++                shared_frecency,
++                picker,
++                signals,
++                sequence,
++            )),
++            ticket,
++        ))
++    }
++
++    fn from_picker(
++        shared_picker: &SharedFilePicker,
++        shared_frecency: &SharedFrecency,
++        picker: &crate::file_picker::FilePicker,
++        signals: ScanSignals,
++        sequence: u64,
++    ) -> Self {
+         let new_scan_config = ScanConfig {
+             warmup: picker.has_mmap_cache(),
+             content_indexing: picker.has_content_indexing(),
+@@ -93,20 +184,42 @@
+             follow_symlinks: picker.follows_symlinks(),
+             enable_fs_root_scanning: picker.fs_root_scanning_enabled(),
+             enable_home_dir_scanning: picker.home_dir_scanning_enabled(),
++            read_policy: picker.read_policy(),
+         };
+ 
+-        drop(guard); // just a sanity check
+-
+-        Ok(Some(Self {
+-            mode,
++        Self {
++            sequence,
++            mode: picker.mode(),
+             signals,
+-            base_path,
+-            scanned_files_counter,
++            base_path: picker.base_path().to_path_buf(),
++            scanned_files_counter: picker.scanned_files_counter(),
+             config: new_scan_config,
+             shared_picker: shared_picker.clone(),
+             shared_frecency: shared_frecency.clone(),
+-            trace_span,
+-        }))
++            trace_span: picker.trace_span(),
++        }
++    }
++
++    fn successor(
++        shared_picker: &SharedFilePicker,
++        shared_frecency: &SharedFrecency,
++        signals: &ScanSignals,
++        sequence: u64,
++    ) -> Result<Self, Error> {
++        let guard = shared_picker.read()?;
++        let picker = guard.as_ref().ok_or(Error::FilePickerMissing)?;
++        if signals.cancelled.load(Ordering::Acquire)
++            || !Arc::ptr_eq(&signals.scheduler, &picker.signals.scheduler)
++        {
++            return Err(Error::ScanRequestFailed("picker was cancelled or replaced"));
++        }
++        Ok(Self::from_picker(
++            shared_picker,
++            shared_frecency,
++            picker,
++            signals.clone(),
++            sequence,
++        ))
+     }
+ 
+     #[allow(clippy::too_many_arguments)]
+@@ -121,6 +234,7 @@
+         config: ScanConfig,
+     ) -> Self {
+         Self {
++            sequence: 0,
+             shared_picker,
+             shared_frecency,
+             base_path,
+@@ -141,7 +255,8 @@
+     /// the kernel drifts those workers onto E-cores. On chromium that turns a
+     /// ~800 ms walk into ~3 s.
+     pub fn spawn(self) {
+-        self.signals.scanning.store(true, Ordering::Release);
++        // Reservation and busy publication happen under the scheduler lock,
++        // before enqueueing. Neither spawn nor a predecessor may clear it.
+         let span = self.trace_span.clone();
+         BACKGROUND_THREAD_POOL.spawn(move || {
+             let _g = span.enter();
+@@ -151,6 +266,7 @@
+ 
+     fn run(self) {
+         let Self {
++            sequence,
+             shared_picker,
+             shared_frecency,
+             base_path,
+@@ -161,11 +277,21 @@
+             trace_span: _,
+         } = self;
+ 
+-        let _scanning = ScanningGuard::new(&signals);
++        let mut scanning = ScanningGuard::new(&signals, &shared_picker, &shared_frecency, sequence);
++        tracing::debug!(
++            scan_sequence = sequence,
++            scan_stage = "starting",
++            "native scan phase"
++        );
++        if signals.cancelled.load(Ordering::Acquire) {
++            return;
++        }
+         scanned_files_counter.store(0, Ordering::Relaxed);
+ 
+         // 1. Walk the file system and collect the list of files
+-        let git_workdir = FileSync::discover_git_workdir(&base_path);
++        let git_workdir = (config.read_policy == ReadPolicy::Ambient)
++            .then(|| FileSync::discover_git_workdir(&base_path))
++            .flatten();
+         let sync = match FileSync::walk_filesystem(
+             &base_path,
+             git_workdir.clone(),
+@@ -173,6 +299,7 @@
+             &shared_frecency,
+             mode,
+             config.follow_symlinks,
++            config.read_policy,
+         ) {
+             Ok(sync) => sync,
+             Err(e) => {
+@@ -202,6 +329,11 @@
+             error!("failed to install scan results into picker");
+             return;
+         }
++        tracing::debug!(
++            scan_sequence = sequence,
++            scan_stage = "committed",
++            "native scan phase"
++        );
+ 
+         // Spawn the git status worker once. BUG PINNNING. If the user initiated git in the folder
+         // which is a real use case we need to have a way to start the git worker background thread dynamically
+@@ -222,7 +354,8 @@
+             None
+         };
+ 
+-        signals.scanning.store(false, Ordering::Relaxed); // file are searchable
++        // Inventory is searchable, but this job still owns the scan reservation
++        // through post-scan work and any pending-successor handoff.
+ 
+         // in case we do a rescan, we have to resubscribe a watcher to the new set of directories
+         // all the already watched directories are not going to be resubscribed (this is internally deduped)
+@@ -270,27 +403,13 @@
+             };
+         }
+ 
+-        // 6. Drain any rescan that arrived while we were busy.
+-        // if user initiated a new rescan we had no way to cancel current post scan, so do it again
+-        if !signals.cancelled.load(Ordering::Acquire)
+-            && signals.rescan_pending.swap(false, Ordering::AcqRel)
+-        {
+-            match Self::new_rescan(&shared_picker, &shared_frecency) {
+-                Ok(Some(follow_up)) => {
+-                    info!("Rescheduling deferred rescan after current scan finished");
+-                    follow_up.spawn();
+-                }
+-                Ok(None) => {
+-                    // this should be practically impossible because we do not have any
+-                    // queue, but if somehow a new rescan was triggered JUST IN THIS MOMENT
+-                    // just ignore it because the ongoing one is fresh enough
+-                    tracing::warn!("Post scan was re-triggered, ignoring");
+-                }
+-                Err(e) => {
+-                    error!(?e, "Failed to reschedule deferred rescan");
+-                }
+-            }
+-        }
++        scanning.successful = true;
++        drop(scanning);
++        tracing::debug!(
++            scan_sequence = sequence,
++            scan_stage = "finished",
++            "native scan phase"
++        );
+     }
+ 
+     /// THIS IS VERY VERY IMPORTANT THAT ANYTHING INSIDE THIS FUNCTION TO NOT READ ANYTHING CLEARABLE OUTSIDE
+@@ -359,21 +478,66 @@
+     }
+ }
+ 
+-// Ensures early returns clear the scanning signal.
++// Finish this reservation on success, early return or unwind. Pending work
++// inherits busy ownership atomically; this guard never clears a successor.
+ struct ScanningGuard<'a> {
+     signals: &'a ScanSignals,
++    shared_picker: &'a SharedFilePicker,
++    shared_frecency: &'a SharedFrecency,
++    sequence: u64,
++    successful: bool,
+ }
+ 
+ impl<'a> ScanningGuard<'a> {
+-    fn new(signals: &'a ScanSignals) -> Self {
+-        signals.scanning.store(true, Ordering::Relaxed);
+-        Self { signals }
++    fn new(
++        signals: &'a ScanSignals,
++        shared_picker: &'a SharedFilePicker,
++        shared_frecency: &'a SharedFrecency,
++        sequence: u64,
++    ) -> Self {
++        Self {
++            signals,
++            shared_picker,
++            shared_frecency,
++            sequence,
++            successful: false,
++        }
+     }
+ }
+ 
+ impl Drop for ScanningGuard<'_> {
+     fn drop(&mut self) {
+-        self.signals.scanning.store(false, Ordering::Relaxed);
++        let mut state = self.signals.scheduler.lock();
++        if self.signals.cancelled.load(Ordering::Acquire) {
++            state.failed_through = state.requested;
++            state.running = false;
++            self.signals.scanning.store(false, Ordering::Release);
++            return;
++        }
++        if self.successful {
++            state.completed = self.sequence;
++        } else {
++            state.failed_through = self.sequence;
++        }
++        if state.requested == self.sequence {
++            state.running = false;
++            self.signals.scanning.store(false, Ordering::Release);
++            return;
++        }
++        // Keep busy continuously while reserving the successor. New requests
++        // queue against that reservation, and no predecessor clears its signal.
++        let next = state.requested;
++        drop(state);
++        match ScanJob::successor(self.shared_picker, self.shared_frecency, self.signals, next) {
++            Ok(job) => job.spawn(),
++            Err(error) => {
++                error!(?error, "Failed to reserve deferred rescan");
++                let mut state = self.signals.scheduler.lock();
++                state.failed_through = state.requested;
++                state.running = false;
++                self.signals.scanning.store(false, Ordering::Release);
++            }
++        }
+     }
+ }
+ 
+--- a/src/shared.rs
++++ b/src/shared.rs
+@@ -11,7 +11,7 @@
+ use crate::query_tracker::QueryTracker;
+ use crate::rescan_stats::{RescanCounters, RescanReason, RescanStats};
+ use crate::rescan_throttle::RescanThrottle;
+-use crate::scan::ScanJob;
++use crate::scan::{RescanTicket, ScanJob};
+ use crate::watch::{WatchEvent, WatchId, WatchOptions, WatchRegistry};
+ use git2::Repository;
+ 
+@@ -210,6 +210,23 @@
+             .map(|_| ())
+     }
+ 
++    /// Request an explicit rescan with a completion fence bound to this picker.
++    /// Requests behind any active native watcher scan are covered by a successor,
++    /// never by that predecessor's generic idle flags or inventory generation.
++    pub fn request_rescan(&self, shared_frecency: &SharedFrecency) -> Result<RescanTicket, Error> {
++        self.0.rescan_throttle.note_explicit_scan();
++        self.0.rescans.record(RescanReason::Explicit);
++        self.schedule_rescan(shared_frecency)
++    }
++
++    fn schedule_rescan(&self, shared_frecency: &SharedFrecency) -> Result<RescanTicket, Error> {
++        let (job, ticket) = ScanJob::new_rescan(self, shared_frecency)?;
++        if let Some(job) = job {
++            job.spawn();
++        }
++        Ok(ticket)
++    }
++
+     /// Returns admitted and throttled rescan requests by reason.
+     /// Counters start at picker creation or the last reset.
+     pub fn rescan_stats(&self) -> RescanStats {
+@@ -239,26 +256,7 @@
+ 
+         self.0.rescans.record(reason);
+ 
+-        match ScanJob::new_rescan(self, shared_frecency)? {
+-            Some(job) => {
+-                job.spawn();
+-            }
+-            None => {
+-                // we can not abort the ongoing sync, but if the events
+-                if let Ok(guard) = self.read()
+-                    && let Some(picker) = guard.as_ref()
+-                {
+-                    picker
+-                        .scan_signals()
+-                        .rescan_pending
+-                        .store(true, std::sync::atomic::Ordering::Release);
+-                    tracing::info!(
+-                        "Full rescan requested while another scan is active — \
+-                         deferred via rescan_pending flag"
+-                    );
+-                }
+-            }
+-        }
++        self.schedule_rescan(shared_frecency)?;
+         Ok(true)
+     }
+ 
+@@ -356,6 +354,9 @@
+             let Some(ref picker) = *guard else {
+                 return Err(Error::FilePickerMissing);
+             };
++            if picker.read_policy() == crate::file_picker::ReadPolicy::RootOnly {
++                return Ok(0);
++            }
+             (
+                 picker.git_root().map(|p| p.to_path_buf()),
+                 picker.git_recency_config(),
+@@ -417,6 +418,9 @@
+             let Some(ref picker) = *guard else {
+                 return Err(Error::FilePickerMissing);
+             };
++            if picker.read_policy() == crate::file_picker::ReadPolicy::RootOnly {
++                return Ok(());
++            }
+             picker.git_root().map(|p| p.to_path_buf())
+         };
+         let Some(git_root) = git_root else {
+--- a/src/walk/mod.rs
++++ b/src/walk/mod.rs
+@@ -93,7 +93,7 @@
+         fs::write(root.join("target/out.bin"), "bin").unwrap();
+ 
+         let counter = Arc::new(AtomicUsize::new(0));
+-        let out = walk_collect_files(root, true, false, 1, &counter).unwrap();
++        let out = walk_collect_files(root, true, false, 1, &counter, Default::default()).unwrap();
+ 
+         let mut names: Vec<String> = out.pairs.into_iter().map(|(_, rel)| rel).collect();
+         names.sort();
+@@ -117,7 +117,7 @@
+         fs::write(root.join("index.js"), "x").unwrap();
+ 
+         let counter = Arc::new(AtomicUsize::new(0));
+-        let out = walk_collect_files(root, false, false, 1, &counter).unwrap();
++        let out = walk_collect_files(root, false, false, 1, &counter, Default::default()).unwrap();
+         let names: Vec<String> = out.pairs.into_iter().map(|(_, rel)| rel).collect();
+ 
+         assert!(names.iter().any(|n| n.ends_with("index.js")));
+@@ -138,7 +138,7 @@
+         fs::write(root.join("Cargo.toml"), "x").unwrap();
+ 
+         let counter = Arc::new(AtomicUsize::new(0));
+-        let out = walk_collect_files(root, true, false, 1, &counter).unwrap();
++        let out = walk_collect_files(root, true, false, 1, &counter, Default::default()).unwrap();
+ 
+         let rules = out.ignore_rules.expect("zlob surfaces ignore rules");
+         assert!(rules.is_ignored(Path::new("target/")));
+--- a/src/walk/ripgrep.rs
++++ b/src/walk/ripgrep.rs
+@@ -1,3 +1,4 @@
++use crate::file_picker::ReadPolicy;
+ use crate::ignore::non_git_repo_overrides;
+ use crate::types::FileItem;
+ use crate::walk::WalkOutput;
+@@ -16,6 +17,7 @@
+     follow_symlinks: bool,
+     threads: usize,
+     synced_files_count: &Arc<AtomicUsize>,
++    read_policy: ReadPolicy,
+ ) -> crate::Result<WalkOutput> {
+     let mut walk_builder = WalkBuilder::new(base_path);
+     walk_builder
+@@ -28,7 +30,18 @@
+         .follow_links(follow_symlinks)
+         .threads(threads);
+ 
+-    if !is_git_repo && let Some(overrides) = non_git_repo_overrides(base_path) {
++    if read_policy == ReadPolicy::RootOnly {
++        // Disable loaders, not just their results. In particular, do not load
++        // parent ignores, global Git config, .git/info/exclude or linked ignores.
++        walk_builder.standard_filters(false).filter_entry(|entry| {
++            entry.file_name() != ".git" && !entry.file_type().is_some_and(|kind| kind.is_symlink())
++        });
++    }
++
++    if read_policy == ReadPolicy::Ambient
++        && !is_git_repo
++        && let Some(overrides) = non_git_repo_overrides(base_path)
++    {
+         walk_builder.overrides(overrides);
+     }
+ 
+@@ -38,15 +51,33 @@
+     // dir, so this keeps one mutex acquisition per entry.
+     let collected =
+         parking_lot::Mutex::new((Vec::<(FileItem, String)>::new(), Vec::<String>::new()));
++    // RootOnly inventories are used for destructive reconciliation. Any walk or
++    // entry-metadata error makes this attempt incomplete, even if other workers
++    // collected files. Keep Ambient's historical best-effort behavior separate.
++    let incomplete = parking_lot::Mutex::new(None::<String>);
+     walker.run(|| {
+         let collected = &collected;
++        let incomplete = &incomplete;
+         let counter = Arc::clone(synced_files_count);
+         let base_path = base_path.to_path_buf();
+ 
+         Box::new(move |result| {
+-            let Ok(entry) = result else {
+-                return ignore::WalkState::Continue;
++            let entry = match result {
++                Ok(entry) => entry,
++                Err(error) => {
++                    if read_policy == ReadPolicy::RootOnly {
++                        incomplete.lock().get_or_insert_with(|| error.to_string());
++                        return ignore::WalkState::Quit;
++                    }
++                    return ignore::WalkState::Continue;
++                }
+             };
++            if read_policy == ReadPolicy::RootOnly
++                && let Some(error) = entry.error()
++            {
++                incomplete.lock().get_or_insert_with(|| error.to_string());
++                return ignore::WalkState::Quit;
++            }
+ 
+             if entry.file_type().is_some_and(|ft| ft.is_file()) {
+                 let path = entry.path();
+@@ -57,7 +88,16 @@
+                     return ignore::WalkState::Continue;
+                 }
+ 
+-                let metadata = entry.metadata().ok();
++                let metadata = match entry.metadata() {
++                    Ok(metadata) => Some(metadata),
++                    Err(error) => {
++                        if read_policy == ReadPolicy::RootOnly {
++                            incomplete.lock().get_or_insert_with(|| error.to_string());
++                            return ignore::WalkState::Quit;
++                        }
++                        None
++                    }
++                };
+                 let (file_item, rel_path) =
+                     FileItem::new_from_walk(path, &base_path, None, metadata.as_ref());
+ 
+@@ -78,6 +118,11 @@
+         })
+     });
+ 
++    if let Some(error) = incomplete.into_inner() {
++        // Return before FileSync construction/commit: the previous inventory
++        // survives and the scan guard settles this request as failed, not done.
++        return Err(crate::error::Error::WalkFailed(error));
++    }
+     let (pairs, dirs) = collected.into_inner();
+     Ok(WalkOutput {
+         pairs,
+--- a/src/walk/zlob.rs
++++ b/src/walk/zlob.rs
+@@ -17,7 +17,13 @@
+     follow_symlinks: bool,
+     threads: usize,
+     synced_files_count: &Arc<AtomicUsize>,
++    read_policy: crate::file_picker::ReadPolicy,
+ ) -> crate::Result<WalkOutput> {
++    if read_policy == crate::file_picker::ReadPolicy::RootOnly {
++        return Err(crate::Error::InvalidReadPolicy(
++            "RootOnly requires the ripgrep backend",
++        ));
++    }
+     // gitignore on; skip hidden on non-git roots (so `~/` doesn't recurse into
+     // ~/.cache, ~/.config, etc.); optionally follow symlinks.
+     let mut flags = WalkFlags::GITIGNORE;
+--- a/src/watcher/background_watcher.rs
++++ b/src/watcher/background_watcher.rs
+@@ -1,6 +1,6 @@
+ use crate::constants::MAX_OVERFLOW_FILES;
+ use crate::error::Error;
+-use crate::file_picker::FFFMode;
++use crate::file_picker::{FFFMode, ReadPolicy};
+ use crate::git_status_worker::GitStatusWorker;
+ use crate::rescan_stats::RescanReason;
+ use crate::shared::{SharedFilePicker, SharedFrecency};
+@@ -128,6 +128,14 @@
+                         WatchTask::Subscribe(dir) => (dir, false),
+                         WatchTask::IndexNewDir(dir) => (dir, true),
+                     };
++
++                    let allowed = strong_picker.read().ok().is_some_and(|g| {
++                        g.as_ref()
++                            .is_some_and(|p| p.read_policy().allows_path(p.base_path(), &dir))
++                    });
++                    if !allowed {
++                        continue;
++                    }
+ 
+                     // Register the watch BEFORE walking so files created mid-walk still handled
+                     #[cfg(target_os = "linux")]
+@@ -335,14 +343,20 @@
+     git_status_worker: &Arc<GitStatusWorker>,
+ ) -> Vec<PathBuf> {
+     // this will be called very often, we have to minimiy the lock time for file picker
+-    let repo = git_workdir.as_ref().and_then(|p| Repository::open(p).ok());
+     // Prefer the walker's own ignore rules (zlob); grab a cheap Arc clone once
+     // per batch so we don't hold the picker lock during filtering.
+-    let walker_rules = shared_picker
++    let Some((read_policy, walker_rules)) = shared_picker
+         .read()
+         .ok()
+-        .and_then(|g| g.as_ref().and_then(|p| p.ignore_rules()));
+-    let filter = IgnoreFilter::new(base_path, walker_rules, repo.as_ref());
++        .and_then(|g| g.as_ref().map(|p| (p.read_policy(), p.ignore_rules())))
++    else {
++        return Vec::new();
++    };
++    let repo = git_workdir
++        .as_ref()
++        .filter(|_| read_policy == ReadPolicy::Ambient)
++        .and_then(|p| Repository::open(p).ok());
++    let filter = IgnoreFilter::new(base_path, walker_rules, repo.as_ref(), read_policy);
+     let mut need_full_git_rescan = false;
+     let mut batch_overflow_attempted = false;
+     let mut paths_to_remove = Vec::new();
+@@ -392,7 +406,7 @@
+                     .paths
+                     .iter()
+                     // but we are smart enough and not falling into the paths
+-                    .all(|p| !p.is_dir() && !filter.is_ignored(p));
++                    .all(|p| read_policy.allows_path(base_path, p) && !p.is_dir() && !filter.is_ignored(p));
+ 
+             if !small_and_known && try_trigger_full_rescan(RescanReason::KernelEventLoss) {
+                 return Vec::new();
+@@ -413,10 +427,15 @@
+         }
+ 
+         for path in &debounced_event.event.paths {
+-            if matches!(
+-                path.file_name().and_then(|f| f.to_str()),
+-                Some(".ignore") | Some(".gitignore")
+-            ) {
++            if !read_policy.allows_path(base_path, path) {
++                continue;
++            }
++            if read_policy == ReadPolicy::Ambient
++                && matches!(
++                    path.file_name().and_then(|f| f.to_str()),
++                    Some(".ignore") | Some(".gitignore")
++                )
++            {
+                 if path
+                     .parent()
+                     .is_some_and(|parent| filter.is_ignored(parent))
+@@ -786,20 +805,29 @@
+     git_workdir: &Option<PathBuf>,
+     git_status_worker: &Arc<GitStatusWorker>,
+ ) -> Vec<PathBuf> {
+-    let repo = git_workdir.as_ref().and_then(|p| Repository::open(p).ok());
+     // Prefer the walker's ignore rules; read base_path + rules from the picker.
+-    let (base_path, walker_rules, follow_symlinks) = match shared_picker.read().ok().and_then(|g| {
+-        g.as_ref().map(|p| {
+-            (
+-                p.base_path().to_path_buf(),
+-                p.ignore_rules(),
+-                p.follows_symlinks(),
+-            )
+-        })
+-    }) {
+-        Some(triple) => triple,
+-        None => return Vec::new(),
+-    };
++    let (base_path, walker_rules, follow_symlinks, read_policy) =
++        match shared_picker.read().ok().and_then(|g| {
++            g.as_ref().map(|p| {
++                (
++                    p.base_path().to_path_buf(),
++                    p.ignore_rules(),
++                    p.follows_symlinks(),
++                    p.read_policy(),
++                )
++            })
++        }) {
++            Some(triple) => triple,
++            None => return Vec::new(),
++        };
++
++    if !read_policy.allows_path(&base_path, dir) {
++        return Vec::new();
++    }
++    let repo = git_workdir
++        .as_ref()
++        .filter(|_| read_policy == ReadPolicy::Ambient)
++        .and_then(|p| Repository::open(p).ok());
+ 
+     let walk = match crate::walk::walk_collect_files(
+         dir,
+@@ -807,6 +835,7 @@
+         follow_symlinks,
+         1,
+         &Arc::new(std::sync::atomic::AtomicUsize::new(0)),
++        read_policy,
+     ) {
+         Ok(walk) => walk,
+         Err(e) => {
+@@ -817,7 +846,7 @@
+ 
+     // TODO: figure out a better optimized way for zlob to rerun the directory walk using existing
+     // ignore rules, but currently we have to filter out ignored files on our own
+-    let filter = IgnoreFilter::new(&base_path, walker_rules, repo.as_ref());
++    let filter = IgnoreFilter::new(&base_path, walker_rules, repo.as_ref(), read_policy);
+     let join_unless_ignored = |relative_path: &str| -> Option<PathBuf> {
+         let path = dir.join(relative_path);
+         (!filter.is_ignored(&path)).then_some(path)
+@@ -909,6 +938,7 @@
+ }
+ 
+ struct IgnoreFilter<'a> {
++    read_policy: ReadPolicy,
+     base_path: &'a Path,
+     /// Reusable ignore rules from the last walk (zlob backend only).
+     rules: Option<Arc<crate::walk::WalkIgnoreRules>>,
+@@ -922,8 +952,10 @@
+         base_path: &'a Path,
+         rules: Option<Arc<crate::walk::WalkIgnoreRules>>,
+         repo: Option<&'a Repository>,
++        read_policy: ReadPolicy,
+     ) -> Self {
+         Self {
++            read_policy,
+             base_path,
+             rules,
+             repo,
+@@ -932,6 +964,9 @@
+ 
+     /// Whether `path` (absolute) is ignored.
+     fn is_ignored(&self, path: &Path) -> bool {
++        if self.read_policy == ReadPolicy::RootOnly {
++            return !self.read_policy.allows_path(self.base_path, path);
++        }
+         if let Some(rules) = self.rules.as_ref() {
+             let Ok(relative) = path.strip_prefix(self.base_path) else {
+                 return false;

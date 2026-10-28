@@ -1,0 +1,2 @@
+# Unified-diff context blank lines must retain their single-space prefix.
+native/patches/*.patch whitespace=-blank-at-eol

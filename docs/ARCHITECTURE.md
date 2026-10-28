@@ -80,6 +80,7 @@ Local SSD and the OS page cache provide the initial storage hierarchy. There is 
 ## Native build boundary
 
 - The FFF bridge is a Rust `cdylib` pinned to `fff-search = 0.11.0`, with a versioned Cargo lockfile.
+- An explicit [scoped-read local prototype](SCOPED_READ_PROTOTYPE.md) adds a fail-closed Go option and additive native ABI. RootOnly requires a scratch build against the reviewed FFF patch; default builds/callers remain Ambient. No dependency distribution or adoption is implied.
 - The default repository build enables Bleve vectors. Direct Go builds require `CGO_ENABLED=1`, `-tags=vectors`, and the Bleve-compatible `libfaiss_c` shared library.
 - `make native` builds both. First build requires a Rust toolchain, C/C++ compiler, CMake, BLAS/LAPACK/OpenMP development libraries, and network access to fetch pinned sources. Runtime is local and does not need network access.
 - CI currently validates Linux amd64. Linux arm64, non-UTF-8 file names, network filesystems, and other OSes are not yet supported/validated.

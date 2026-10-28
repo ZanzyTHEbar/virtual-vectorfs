@@ -2,8 +2,10 @@ package fffbridge
 
 /*
 #cgo linux pkg-config: fffbridge
+#cgo linux LDFLAGS: -ldl
+#cgo linux CFLAGS: -D_GNU_SOURCE
 #include <stdlib.h>
-#include "fffbridge.h"
+#include "provider.h"
 */
 import "C"
 
@@ -19,6 +21,7 @@ import (
 )
 
 type Options struct {
+	ReadPolicy            string      `json:"-"`
 	EnableContentIndexing bool        `json:"enable_content_indexing"`
 	EnableMmapCache       bool        `json:"enable_mmap_cache"`
 	CacheBudget           CacheBudget `json:"cache_budget"`
@@ -33,6 +36,7 @@ type CacheBudget struct {
 type Bridge struct {
 	mu     sync.RWMutex // FFF calls share the handle; Close excludes all calls.
 	handle *C.FffbHandle
+	api    *C.FffbApi // Strict provider is pinned until handle destruction/string disposal.
 }
 
 var errHandleClosed = errors.New("FFF bridge is closed")
@@ -115,6 +119,11 @@ type Status struct {
 }
 
 func Open(root string, options Options) (*Bridge, error) {
+	switch options.ReadPolicy {
+	case "", "ambient", "root-only":
+	default:
+		return nil, fmt.Errorf("unsupported native read policy %q", options.ReadPolicy)
+	}
 	if err := rejectNUL("root", root); err != nil {
 		return nil, err
 	}
@@ -128,19 +137,70 @@ func Open(root string, options Options) (*Bridge, error) {
 	defer C.free(unsafe.Pointer(optionsCString))
 
 	var cErr *C.char
-	handle := C.fffb_open(rootCString, optionsCString, &cErr)
+	var api *C.FffbApi
+	if options.ReadPolicy == "root-only" {
+		var bindingErr *C.char
+		api = C.fffb_api_bind_root_only(&bindingErr)
+		if api == nil {
+			if bindingErr != nil {
+				message := C.GoString(bindingErr)
+				C.free(unsafe.Pointer(bindingErr)) // Binding errors are libc-owned, before any Rust open.
+				return nil, errors.New(message)
+			}
+			return nil, errors.New("RootOnly unavailable: cannot bind native provider")
+		}
+	}
+	handle := C.fffb_api_open(api, rootCString, optionsCString, &cErr)
 	if cErr != nil {
 		message := C.GoString(cErr)
-		C.fffb_free_string(cErr)
+		C.fffb_api_free_string(api, cErr)
 		if handle != nil {
-			C.fffb_close(handle)
+			C.fffb_api_close(api, handle)
 		}
+		C.fffb_api_release(api)
 		return nil, errors.New(message)
 	}
 	if handle == nil {
+		C.fffb_api_release(api)
 		return nil, errors.New("FFF bridge returned a nil handle")
 	}
-	return &Bridge{handle: handle}, nil
+	return &Bridge{handle: handle, api: api}, nil
+}
+
+// Rescan waits for the requested native scan ticket, not generic idle flags.
+func (b *Bridge) Rescan(ctx context.Context) error {
+	var response struct {
+		Ticket uint64 `json:"ticket"`
+	}
+	if err := b.decode(func(handle *C.FffbHandle) *C.char {
+		return C.fffb_api_request_rescan(b.api, handle)
+	}, &response); err != nil {
+		return err
+	}
+	if response.Ticket == 0 {
+		return errors.New("native FFF rescan returned no completion ticket")
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		b.mu.RLock()
+		handle, err := b.liveHandle()
+		if err != nil {
+			b.mu.RUnlock()
+			return err
+		}
+		result := C.fffb_api_wait_rescan(b.api, handle, C.uint64_t(response.Ticket), 250)
+		b.mu.RUnlock()
+		switch result {
+		case 1:
+			return nil
+		case 0:
+			continue
+		default:
+			return errors.New("requested native FFF rescan failed, was cancelled or was superseded")
+		}
+	}
 }
 
 func (b *Bridge) WaitReady(ctx context.Context) error {
@@ -151,7 +211,7 @@ func (b *Bridge) WaitReady(ctx context.Context) error {
 		b.mu.RLock()
 		handle, err := b.liveHandle()
 		if err == nil {
-			result := C.fffb_wait_ready(handle, 250)
+			result := C.fffb_api_wait_ready(b.api, handle, 250)
 			b.mu.RUnlock()
 			switch result {
 			case 1:
@@ -179,7 +239,7 @@ func (b *Bridge) WaitReady(ctx context.Context) error {
 func (b *Bridge) Inventory(offset, limit int) (InventoryPage, error) {
 	var page InventoryPage
 	err := b.decode(func(handle *C.FffbHandle) *C.char {
-		return C.fffb_inventory(handle, C.uint64_t(offset), C.uint32_t(limit))
+		return C.fffb_api_inventory(b.api, handle, C.uint64_t(offset), C.uint32_t(limit))
 	}, &page)
 	return page, err
 }
@@ -192,7 +252,7 @@ func (b *Bridge) SearchPaths(query string, offset, limit int) (FilePage, error) 
 	defer C.free(unsafe.Pointer(queryCString))
 	var page FilePage
 	err := b.decode(func(handle *C.FffbHandle) *C.char {
-		return C.fffb_search_paths(handle, queryCString, C.uint64_t(offset), C.uint32_t(limit))
+		return C.fffb_api_search_paths(b.api, handle, queryCString, C.uint64_t(offset), C.uint32_t(limit))
 	}, &page)
 	return page, err
 }
@@ -219,7 +279,7 @@ func (b *Bridge) Grep(query, mode string, fileOffset, limit, contextBefore, cont
 	defer C.free(unsafe.Pointer(modeCString))
 	var page GrepPage
 	err := b.decode(func(handle *C.FffbHandle) *C.char {
-		return C.fffb_live_grep(handle, queryCString, modeCString, C.uint64_t(fileOffset), C.uint32_t(min(limit, maxGrepMatchTarget)), C.uint64_t(min(contextBefore, maxGrepContextLines)), C.uint64_t(min(contextAfter, maxGrepContextLines)))
+		return C.fffb_api_live_grep(b.api, handle, queryCString, modeCString, C.uint64_t(fileOffset), C.uint32_t(min(limit, maxGrepMatchTarget)), C.uint64_t(min(contextBefore, maxGrepContextLines)), C.uint64_t(min(contextAfter, maxGrepContextLines)))
 	}, &page)
 	return page, err
 }
@@ -241,7 +301,7 @@ func (b *Bridge) PollEvents(timeout time.Duration, limit int) ([]Event, error) {
 	}
 	var events []Event
 	err := b.decode(func(handle *C.FffbHandle) *C.char {
-		return C.fffb_poll_events(handle, C.uint32_t(milliseconds), C.uint32_t(limit))
+		return C.fffb_api_poll_events(b.api, handle, C.uint32_t(milliseconds), C.uint32_t(limit))
 	}, &events)
 	return events, err
 }
@@ -249,7 +309,7 @@ func (b *Bridge) PollEvents(timeout time.Duration, limit int) ([]Event, error) {
 func (b *Bridge) Status() (Status, error) {
 	var status Status
 	err := b.decode(func(handle *C.FffbHandle) *C.char {
-		return C.fffb_status(handle)
+		return C.fffb_api_status(b.api, handle)
 	}, &status)
 	return status, err
 }
@@ -258,9 +318,11 @@ func (b *Bridge) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.handle != nil {
-		C.fffb_close(b.handle)
+		C.fffb_api_close(b.api, b.handle)
 		b.handle = nil
 	}
+	C.fffb_api_release(b.api)
+	b.api = nil
 }
 
 func (b *Bridge) decode(call func(*C.FffbHandle) *C.char, out any) error {
@@ -275,7 +337,7 @@ func (b *Bridge) decode(call func(*C.FffbHandle) *C.char, out any) error {
 		return errors.New("FFF bridge returned a null JSON string")
 	}
 	text := C.GoString(result)
-	C.fffb_free_string(result)
+	C.fffb_api_free_string(b.api, result)
 	if strings.HasPrefix(text, "{") {
 		var envelope map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(text), &envelope); err != nil {

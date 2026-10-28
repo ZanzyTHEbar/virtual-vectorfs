@@ -55,6 +55,11 @@ func (e *Engine) syncFiles(ctx context.Context) (BuildReport, error) {
 	if err := e.bridge.WaitReady(ctx); err != nil {
 		return BuildReport{}, fmt.Errorf("wait for FFF inventory: %w", err)
 	}
+	if e.options.NativeReadPolicy == NativeReadRootOnly {
+		if err := e.bridge.Rescan(ctx); err != nil {
+			return BuildReport{}, fmt.Errorf("complete requested RootOnly native rescan: %w", err)
+		}
+	}
 	generation, err := newGenerationID()
 	if err != nil {
 		return BuildReport{}, err

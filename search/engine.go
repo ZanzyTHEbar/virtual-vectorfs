@@ -60,6 +60,7 @@ func Open(ctx context.Context, options Options) (*Engine, error) {
 		return nil, err
 	}
 	bridgeOptions := fffbridge.Options{
+		ReadPolicy:            string(options.NativeReadPolicy),
 		EnableContentIndexing: options.FFFContentCache,
 		EnableMmapCache:       options.FFFMmapCache,
 		CacheBudget: fffbridge.CacheBudget{

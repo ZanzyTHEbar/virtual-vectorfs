@@ -27,8 +27,16 @@ const MAX_GREP_LINE_BYTES: usize = 384;
 const MAX_GREP_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_GREP_TIME_BUDGET_MS: u64 = 500;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReadPolicy {
+    #[default]
+    Ambient,
+    RootOnly,
+}
+
 #[derive(Debug)]
 pub(super) struct BridgeOptions {
+    read_policy: ReadPolicy,
     enable_content_indexing: bool,
     enable_mmap_cache: bool,
     cache_budget: Option<ContentCacheBudget>,
@@ -37,6 +45,7 @@ pub(super) struct BridgeOptions {
 impl Default for BridgeOptions {
     fn default() -> Self {
         Self {
+            read_policy: ReadPolicy::Ambient,
             enable_content_indexing: false,
             enable_mmap_cache: false,
             cache_budget: Some(ContentCacheBudget::with_max_files(0)),
@@ -45,6 +54,11 @@ impl Default for BridgeOptions {
 }
 
 impl BridgeOptions {
+    pub(super) fn with_read_policy(mut self, read_policy: ReadPolicy) -> Self {
+        self.read_policy = read_policy;
+        self
+    }
+
     pub(super) fn parse(json_text: Option<&str>) -> Result<Self, String> {
         let Some(json_text) = json_text else {
             return Ok(Self::default());
@@ -198,14 +212,24 @@ pub(super) struct FffbHandle {
     events: Arc<EventQueue>,
     watch_startup: Arc<WatchStartup>,
     watch_worker: Option<JoinHandle<()>>,
+    #[cfg(feature = "scoped-reads-prototype")]
+    rescan_ticket: Mutex<Option<fff_search::RescanTicket>>,
 }
 
 impl FffbHandle {
     pub(super) fn open(root: &str, options: BridgeOptions) -> Result<Self, String> {
+        #[cfg(not(feature = "scoped-reads-prototype"))]
+        if options.read_policy == ReadPolicy::RootOnly {
+            return Err("RootOnly requires the local scoped-reads-prototype native build and reviewed FFF patch".to_owned());
+        }
         if root.is_empty() {
             return Err("root path must not be empty".to_owned());
         }
-        let root = Path::new(root)
+        let input_root = Path::new(root);
+        if options.read_policy == ReadPolicy::RootOnly {
+            validate_root_only_root(input_root)?;
+        }
+        let root = input_root
             .canonicalize()
             .map_err(|error| format!("cannot resolve root path: {error}"))?;
         if !root.is_dir() {
@@ -234,9 +258,25 @@ impl FffbHandle {
             enable_fs_root_scanning: false,
             enable_home_dir_scanning: false,
         };
-        if let Err(error) =
-            FilePicker::new_with_shared_state(picker.clone(), shared_frecency, fff_options)
-        {
+        let start = match options.read_policy {
+            ReadPolicy::Ambient => {
+                FilePicker::new_with_shared_state(picker.clone(), shared_frecency, fff_options)
+            }
+            ReadPolicy::RootOnly => {
+                #[cfg(feature = "scoped-reads-prototype")]
+                {
+                    FilePicker::new_with_shared_state_and_read_policy(
+                        picker.clone(),
+                        shared_frecency,
+                        fff_options,
+                        fff_search::ReadPolicy::RootOnly,
+                    )
+                }
+                #[cfg(not(feature = "scoped-reads-prototype"))]
+                unreachable!("RootOnly was rejected before native startup")
+            }
+        };
+        if let Err(error) = start {
             stop_picker(&picker);
             return Err(format!("cannot start FFF picker: {error}"));
         }
@@ -294,6 +334,8 @@ impl FffbHandle {
             events,
             watch_startup,
             watch_worker,
+            #[cfg(feature = "scoped-reads-prototype")]
+            rescan_ticket: Mutex::new(None),
         })
     }
 
@@ -310,6 +352,58 @@ impl FffbHandle {
         Ok(self
             .picker
             .wait_for_indexing_complete(timeout.saturating_sub(start.elapsed())))
+    }
+
+    pub(super) fn request_rescan(&self) -> Result<Value, String> {
+        Err("unfenced v1 rescan is unavailable; use the v2 request/completion ABI".to_owned())
+    }
+
+    pub(super) fn request_rescan_v2(&self) -> Result<Value, String> {
+        #[cfg(feature = "scoped-reads-prototype")]
+        {
+            let mut pending = self
+                .rescan_ticket
+                .lock()
+                .map_err(|_| "rescan lock poisoned")?;
+            if let Some(ticket) = pending.as_ref() {
+                if matches!(ticket.wait(Duration::ZERO), Ok(false)) {
+                    return Err("a fenced rescan is already outstanding".to_owned());
+                }
+            }
+            let ticket = self
+                .picker
+                .request_rescan(&SharedFrecency::default())
+                .map_err(|error| format!("cannot request fenced FFF rescan: {error}"))?;
+            let sequence = ticket.sequence();
+            *pending = Some(ticket);
+            Ok(json!({"ticket": sequence}))
+        }
+        #[cfg(not(feature = "scoped-reads-prototype"))]
+        {
+            Err("fenced rescan requires the local scoped-reads-prototype native build".to_owned())
+        }
+    }
+
+    pub(super) fn wait_rescan_v2(&self, sequence: u64, timeout: Duration) -> Result<bool, String> {
+        #[cfg(feature = "scoped-reads-prototype")]
+        {
+            let pending = self
+                .rescan_ticket
+                .lock()
+                .map_err(|_| "rescan lock poisoned")?;
+            let ticket = pending
+                .as_ref()
+                .filter(|ticket| ticket.sequence() == sequence)
+                .ok_or_else(|| "unknown or superseded native rescan ticket".to_owned())?;
+            ticket
+                .wait(timeout)
+                .map_err(|error| format!("fenced FFF rescan failed: {error}"))
+        }
+        #[cfg(not(feature = "scoped-reads-prototype"))]
+        {
+            let _ = (sequence, timeout);
+            Err("fenced rescan requires the local scoped-reads-prototype native build".to_owned())
+        }
     }
 
     fn wait_for_subscription(&self, timeout: Duration) -> Result<bool, String> {
@@ -591,6 +685,27 @@ impl FffbHandle {
     pub(super) fn poll_events(&self, timeout: Duration, max_events: usize) -> Value {
         Value::Array(self.events.drain(timeout, max_events))
     }
+}
+
+fn validate_root_only_root(root: &Path) -> Result<(), String> {
+    use std::path::Component;
+    if !root.is_absolute()
+        || root
+            .components()
+            .any(|c| !matches!(c, Component::RootDir | Component::Normal(_)))
+    {
+        return Err("RootOnly requires an absolute root without parent traversal".to_owned());
+    }
+    let mut current = std::path::PathBuf::new();
+    for component in root.components() {
+        current.push(component.as_os_str());
+        let metadata = std::fs::symlink_metadata(&current)
+            .map_err(|error| format!("cannot inspect RootOnly ancestry: {error}"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err("RootOnly root and ancestry must be non-symlink directories".to_owned());
+        }
+    }
+    Ok(())
 }
 
 impl Drop for FffbHandle {

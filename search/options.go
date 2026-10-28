@@ -9,6 +9,12 @@ import (
 )
 
 func normalizeOptions(options Options) (Options, error) {
+	if options.NativeReadPolicy == "" {
+		options.NativeReadPolicy = NativeReadAmbient
+	}
+	if options.NativeReadPolicy != NativeReadAmbient && options.NativeReadPolicy != NativeReadRootOnly {
+		return Options{}, fmt.Errorf("unsupported native read policy %q", options.NativeReadPolicy)
+	}
 	if options.Root == "" {
 		return Options{}, errors.New("root is required")
 	}
@@ -16,9 +22,28 @@ func normalizeOptions(options Options) (Options, error) {
 	if err != nil {
 		return Options{}, fmt.Errorf("resolve root: %w", err)
 	}
-	root, err = filepath.EvalSymlinks(root)
-	if err != nil {
-		return Options{}, fmt.Errorf("resolve root symlinks: %w", err)
+	if options.NativeReadPolicy == NativeReadRootOnly {
+		// Check from the filesystem root downward: inspecting a leaf first
+		// could already follow a symlink ancestor. This is not race protection.
+		current := string(filepath.Separator)
+		for _, part := range strings.Split(root, string(filepath.Separator)) {
+			if part == "" {
+				continue
+			}
+			current = filepath.Join(current, part)
+			info, err := os.Lstat(current)
+			if err != nil {
+				return Options{}, fmt.Errorf("check RootOnly ancestry: %w", err)
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return Options{}, errors.New("RootOnly root ancestry must not contain symlinks")
+			}
+		}
+	} else {
+		root, err = filepath.EvalSymlinks(root)
+		if err != nil {
+			return Options{}, fmt.Errorf("resolve root symlinks: %w", err)
+		}
 	}
 	info, err := os.Stat(root)
 	if err != nil {
