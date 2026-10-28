@@ -9,6 +9,9 @@ import (
 // its own match-target and file-offset pagination limits.
 const MaxSearchLimit = 10000
 
+// MaxExpandBytes caps the UTF-8 bytes returned by one Expand request.
+const MaxExpandBytes = 16 << 10
+
 const (
 	// MaxGrepFilesPerPage bounds distinct files represented in a grep result page.
 	MaxGrepFilesPerPage = 100
@@ -160,6 +163,35 @@ type Hit struct {
 	Generation string        `json:"generation"`
 	Stale      bool          `json:"stale,omitempty"`
 	HasVector  bool          `json:"has_vector"`
+}
+
+// ExpandRequest selects a versioned byte range from one explicit source field.
+type ExpandRequest struct {
+	ID                  string
+	ExpectedContentHash string
+	ExpectedSource      string
+	Field               string
+	Offset              int
+	Limit               int
+}
+
+const (
+	OriginLiveFile      = "live_file"
+	OriginIndexedRecord = "indexed_record"
+)
+
+// Excerpt describes a verified UTF-8 byte range, not a query-match location.
+type Excerpt struct {
+	ID          string `json:"id"`
+	Source      string `json:"source"`
+	Path        string `json:"path"`
+	Field       string `json:"field"`
+	ContentHash string `json:"content_hash"`
+	Origin      string `json:"origin"`
+	StartByte   int64  `json:"start_byte"`
+	EndByte     int64  `json:"end_byte"`
+	TotalBytes  int64  `json:"total_bytes"`
+	Text        string `json:"text"`
 }
 
 type BuildReport struct {

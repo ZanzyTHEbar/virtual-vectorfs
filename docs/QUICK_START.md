@@ -77,6 +77,28 @@ hits, err := engine.Search(ctx, search.Query{
 
 Hybrid search uses RRF in one Bleve request by default. Set `IncludeRankEvidence: true` only when per-channel ranks are needed; in hybrid mode it adds two extra Bleve searches.
 
+To read a versioned source range from a hit, supply its ID, content hash, source, and an explicit field:
+
+```go
+if len(hits) == 0 {
+    return fmt.Errorf("no search hits to expand")
+}
+excerpt, err := engine.Expand(ctx, search.ExpandRequest{
+    ID: hits[0].ID, ExpectedContentHash: hits[0].ContentHash,
+    ExpectedSource: hits[0].Source,
+    Field: "text", Offset: 0, Limit: 4096,
+})
+if err != nil {
+    return err
+}
+fmt.Printf("%s [%d:%d/%d]: %s\n", excerpt.Origin,
+    excerpt.StartByte, excerpt.EndByte, excerpt.TotalBytes, excerpt.Text)
+```
+
+`ExpectedSource` is required: the existing caller content hash does not cover `Source`. `Limit: 0` defaults to 4096 bytes; the maximum is `search.MaxExpandBytes` (16 KiB). Offsets are absolute UTF-8 byte positions in the selected field, must precede EOF and start on a rune boundary; partial ending runes are omitted. For files only `text` is available: the engine reads and hashes the *entire live file* under the configured root, and refuses content that fails its hash check, an observed stale index record, or a missing, renamed, oversized, or unsupported file instead of returning an indexed preview. Caller records allow `text`, `context`, or `title`; their `Path` is not read as a file. The index is checked again after reading, but another index or filesystem change can occur immediately afterward. `errors.Is(err, search.ErrStaleContent)` identifies observed version failures and `errors.Is(err, os.ErrNotExist)` identifies missing IDs or paths. Output is limited to 16 KiB and at most `min(Workers, 4)` expansions fetch content concurrently; a single arbitrarily large caller field can still be materialized in full by Bleve.
+
+`Hit.ByteOffset` is the preview start, **not** a match position. `GrepMatch.ByteOffset` starts the source file's line, not necessarily the match; `GrepMatch.MatchByteOffsets` are relative to the displayed (possibly truncated) `LineContent`, not absolute file offsets. For a very long line, grep's display can omit the match and return no match ranges. Page `Expand` from the line start using each `EndByte` until the desired source text is independently located and verified (or no more pages remain). A match can straddle two pages: carry the prior page's tail or request a UTF-8-aligned overlapping window before claiming no match. Neither one page nor an adjusted display range proves its file offset.
+
 ## 4. Supply vectors from the driver
 
 The engine does not contain an embedding model. `VectorDimensions` is required when opening every index and must match the driver's model; Bleve supports up to 4096 dimensions. The default repository build enables vectors. Direct Go builds must include `-tags=vectors` and supply the query vector to semantic/hybrid search.

@@ -23,10 +23,11 @@ type Engine struct {
 	index   bleve.Index
 	bridge  *fffbridge.Bridge
 
-	lifeMu   sync.RWMutex
-	closed   bool
-	closeErr error
-	writeMu  sync.Mutex
+	lifeMu      sync.RWMutex
+	closed      bool
+	closeErr    error
+	writeMu     sync.Mutex
+	expandSlots chan struct{}
 
 	stateMu              sync.RWMutex
 	generationID         string
@@ -86,6 +87,7 @@ func Open(ctx context.Context, options Options) (*Engine, error) {
 		options:      options,
 		index:        index,
 		bridge:       bridge,
+		expandSlots:  make(chan struct{}, min(options.Workers, 4)),
 		jobs:         make(chan string, options.QueueCapacity),
 		pending:      make(map[string]bool),
 		rescan:       make(chan struct{}, 1),
