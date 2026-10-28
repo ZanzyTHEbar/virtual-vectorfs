@@ -1,5 +1,14 @@
 # Companion harness: owner handoff and implementation gates
 
+**Historical handoff; integration annotation — 2026-10-28.** The observations,
+ownership and restrictions below describe the 2026-10-21 planning milestone,
+not a live worker assignment or current target-selection blocker. The user has
+since approved local merges. Coordinator metadata identifies existing `familiar`
+worktrees; none was inspected or modified during this integration, and this
+document does not establish their implementation or validation status. F2 is
+being integrated locally after fresh checks, not published remotely. Consult
+current Git history and the companion's own records before resuming work.
+
 **2026-10-21 — plan only; no companion implementation.** Owner: dedicated
 `companion-harness` Workmux agent. Retain this branch/session; no merge, push,
 cleanup, dependency transfer, installation, download or inference is authorized
@@ -8,7 +17,7 @@ by this handoff. This execution record supplements, not replaces,
 [LOCAL_AGENT_POLICY.md](LOCAL_AGENT_POLICY.md) (authority and recovery).
 The canonical working-tree versions take precedence over this HEAD-based branch.
 
-## Decision required before code
+## Historical decision required before code (2026-10-21)
 
 The approved product is a **separate Go module** importing
 `github.com/ZanzyTHEbar/virtual-vectorfs/search`, not a command or internal package
@@ -95,14 +104,18 @@ was inspected to verify the contract rather than relying on historical memory.
   Availability is transient; no Gemma/EmbeddingGemma fit or latency claim follows.
 - `llama-server`, `llama-cli`, `nvidia-smi`, `rocm-smi` were absent from PATH.
   This is not an exhaustive model/artifact inventory. No endpoint was contacted.
-- `/mnt/common` currently reports **virtiofs**, not the earlier assessment's
-  fuseblk. Do not qualify either as a supported broker filesystem from its name.
+- Tool-specific mount observations: `findmnt -T /mnt/common` reports
+  `virtiofs` / `vm403-common`; baseline reports `stat -f %T /mnt/common` returns
+  `fuseblk` on this guest. These observations do not establish a mount change
+  or qualify the filesystem for broker effects.
   Scratch capacity: approximately 11 GiB free on /tmp, 1.6 TiB on /mnt/common.
 - Native shared libraries exist in canonical `build/native/lib` (ignored build
   output). Default pkg-config cannot find `fffbridge`; explicitly setting
   `PKG_CONFIG_PATH` to its `lib/pkgconfig` reports bridge package `0.1.0`.
-  Earlier `/tmp/opencode/vvfs-native-prefix/lib` is absent. No linking/ABI/runtime
-  verification was performed. A Go import does not install native dependencies.
+  Earlier `/tmp/opencode/vvfs-native-prefix/lib` is absent. This owner performed
+  no linking/ABI/runtime verification; baseline reports actually linking/running
+  the current native dependencies. That does not qualify the downstream doctor
+  or model fit. A Go import does not install native dependencies.
 - Cgroup CPU/memory ceilings were not established; root `memory.max`/`cpu.max`
   were absent. Worker isolation/resource enforcement remains an acceptance gate.
 
@@ -212,7 +225,7 @@ contracts, not commands already run or a claim that these interfaces exist.
   one high-signal real acceptance flow per capability where practical, no helper
   test matrices or fake collaborators. No personal indexing or user databases.
 
-## Milestone result and next action
+## Historical milestone result and next action (2026-10-21)
 
 Plan-only checks: `git diff --check` passed before editing. Read-only environment,
 source and dependency inspections above ran; historical F2 gate results were read,
