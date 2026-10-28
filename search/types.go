@@ -53,6 +53,22 @@ const (
 	VectorMemoryEfficient VectorQuality = "memory_efficient"
 )
 
+// NativeReadPolicy selects FFF's filesystem policy, not process-wide authority.
+type NativeReadPolicy string
+
+const (
+	// NativeReadAmbient preserves existing Git discovery/status and ignore behavior.
+	NativeReadAmbient NativeReadPolicy = "ambient"
+	// NativeReadRootOnly is a LOCAL PROTOTYPE requiring the reviewed patched FFF
+	// and opt-in native build. All ignores are OFF and hidden files are included;
+	// symlinks are excluded. Callers must explicitly grant all ordinary in-root
+	// content, including ignored credentials, and keep root ancestry AND indexed
+	// leaves stable. Ordinary native opens lack kernel no-follow. This is not an
+	// OS sandbox, hostile-same-UID guarantee or a boundary against the Rust caller.
+	// Index/evidence paths and runtime library/proc/sys reads remain separate.
+	NativeReadRootOnly NativeReadPolicy = "root-only"
+)
+
 type Options struct {
 	Root             string
 	IndexPath        string
@@ -65,6 +81,9 @@ type Options struct {
 	Workers          int
 	QueueCapacity    int
 	WriteBatchBytes  int64 // Target document-text bytes per Bleve batch; zero uses 32 MiB.
+	// NativeReadPolicy defaults to Ambient. RootOnly fails if native support is
+	// absent; there is no downgrade. Do not silently switch existing root grants.
+	NativeReadPolicy NativeReadPolicy
 
 	FFFContentCache     bool
 	FFFMmapCache        bool

@@ -18,6 +18,24 @@ typedef struct FffbHandle FffbHandle;
  * non-NULL. Free all returned strings with fffb_free_string.
  */
 FffbHandle *fffb_open(const char *root_utf8, const char *opts_json, char **err);
+/* Additive v1 ABI; old fffb_open always retains Ambient behavior.
+ * RootOnly is a LOCAL PROTOTYPE, unsupported by default native builds. It fails
+ * explicitly unless built with scoped-reads-prototype and the reviewed local
+ * FFF patch. No Git or ignore interpretation; hidden files included, symlinks
+ * excluded. Requires trusted stable ancestry AND indexed leaves, not an OS
+ * sandbox/caller capability boundary. opts_json has the same cache-only schema.
+ * Do not fall back to fffb_open if this entry point is absent or fails. */
+FffbHandle *fffb_open_root_only_v1(const char *root_utf8, const char *opts_json,
+                                char **err);
+/* Retained v1 symbol; now explicitly returns a JSON error because generic idle
+ * flags cannot fence its request. Use the v2 pair, not a v1/readiness fallback. */
+char *fffb_request_rescan_v1(FffbHandle *handle);
+/* Returns allocated {"ticket":N} for a real native request, or a JSON error.
+ * At most one outstanding ticket per handle; no unbounded ticket registry. */
+char *fffb_request_rescan_v2(FffbHandle *handle);
+/* 1 completed by a qualifying successful scan, 0 timeout, -1 failed/invalid or
+ * cancelled. Tickets belong to this handle/picker; readiness is NOT its fence. */
+int32_t fffb_wait_rescan_v2(FffbHandle *handle, uint64_t ticket, uint32_t timeout_ms);
 void fffb_close(FffbHandle *handle);
 
 /* Returns 1 when scan/post-scan indexing and watcher are ready, 0 on timeout,
@@ -52,6 +70,10 @@ void fffb_free_string(char *value);
  * to establish a baseline after the FFF subscription is installed.
  * Calls on one handle may run concurrently, except close requires all calls
  * to have returned. Handles and input pointers must be valid for each call. */
+/* Every operation, string-free and destructor MUST use the same loaded provider
+ * that opened the handle. Never mix independently resolved global providers.
+ * RootOnly validates absolute non-symlink ancestry BEFORE canonicalizing, but
+ * still requires stable ancestry/indexed leaves; it does not pin identities. */
 
 #ifdef __cplusplus
 }

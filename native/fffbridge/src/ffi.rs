@@ -1,4 +1,6 @@
-use crate::bridge::{capped_limit, offset_to_usize, parse_grep_mode, BridgeOptions, FffbHandle};
+use crate::bridge::{
+    capped_limit, offset_to_usize, parse_grep_mode, BridgeOptions, FffbHandle, ReadPolicy,
+};
 use serde_json::{json, Value};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
@@ -51,6 +53,30 @@ pub unsafe extern "C" fn fffb_open(
     opts_json: *const c_char,
     err: *mut *mut c_char,
 ) -> *mut FffbHandle {
+    // SAFETY: this entry point forwards the same pointer contract to the helper.
+    unsafe { open_bridge(root_utf8, opts_json, err, ReadPolicy::Ambient) }
+}
+
+#[no_mangle]
+/// Open a RootOnly picker, or explicitly fail when the prototype is unavailable.
+///
+/// # Safety
+/// The same pointer/lifetime contract as `fffb_open` applies.
+pub unsafe extern "C" fn fffb_open_root_only_v1(
+    root_utf8: *const c_char,
+    opts_json: *const c_char,
+    err: *mut *mut c_char,
+) -> *mut FffbHandle {
+    // SAFETY: this entry point forwards the same pointer contract to the helper.
+    unsafe { open_bridge(root_utf8, opts_json, err, ReadPolicy::RootOnly) }
+}
+
+unsafe fn open_bridge(
+    root_utf8: *const c_char,
+    opts_json: *const c_char,
+    err: *mut *mut c_char,
+    read_policy: ReadPolicy,
+) -> *mut FffbHandle {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if !err.is_null() {
             unsafe { *err = ptr::null_mut() };
@@ -62,8 +88,11 @@ pub unsafe extern "C" fn fffb_open(
             } else {
                 Some(unsafe { input_utf8(opts_json, "opts_json")? })
             };
-            FffbHandle::open(root, BridgeOptions::parse(options_text)?)
-                .map(|handle| Box::into_raw(Box::new(handle)))
+            FffbHandle::open(
+                root,
+                BridgeOptions::parse(options_text)?.with_read_policy(read_policy),
+            )
+            .map(|handle| Box::into_raw(Box::new(handle)))
         })() {
             Ok(handle) => handle,
             Err(error) => {
@@ -85,6 +114,59 @@ pub unsafe extern "C" fn fffb_open(
             ptr::null_mut()
         }
     }
+}
+
+#[no_mangle]
+/// Retained v1 entry point: returns an explicit unsupported JSON error.
+/// Generic wait_ready is not a requested-rescan completion fence; use v2.
+///
+/// # Safety
+/// `handle` must be NULL or live, and must not be closed concurrently.
+pub unsafe extern "C" fn fffb_request_rescan_v1(handle: *mut FffbHandle) -> *mut c_char {
+    ffi_json(|| {
+        // SAFETY: the caller guarantees a live handle for this call.
+        let handle =
+            unsafe { handle.as_ref() }.ok_or_else(|| "handle must not be NULL".to_owned())?;
+        handle.request_rescan()
+    })
+}
+
+#[no_mangle]
+/// Request a native rescan and return its picker-bound completion ticket as JSON.
+///
+/// # Safety
+/// `handle` must be NULL or live, and must not be closed concurrently.
+pub unsafe extern "C" fn fffb_request_rescan_v2(handle: *mut FffbHandle) -> *mut c_char {
+    ffi_json(|| {
+        // SAFETY: the caller guarantees a live handle for this call.
+        let handle =
+            unsafe { handle.as_ref() }.ok_or_else(|| "handle must not be NULL".to_owned())?;
+        handle.request_rescan_v2()
+    })
+}
+
+#[no_mangle]
+/// Wait for a v2 ticket: 1 completed, 0 timeout, -1 invalid/failed/cancelled.
+///
+/// # Safety
+/// `handle` must be NULL or live from the same provider, not closed concurrently.
+pub unsafe extern "C" fn fffb_wait_rescan_v2(
+    handle: *mut FffbHandle,
+    ticket: u64,
+    timeout_ms: u32,
+) -> c_int {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // SAFETY: the caller guarantees the handle's provider and lifetime.
+        let Some(handle) = (unsafe { handle.as_ref() }) else {
+            return -1;
+        };
+        match handle.wait_rescan_v2(ticket, Duration::from_millis(timeout_ms.into())) {
+            Ok(true) => 1,
+            Ok(false) => 0,
+            Err(_) => -1,
+        }
+    }))
+    .unwrap_or(-1)
 }
 
 #[no_mangle]

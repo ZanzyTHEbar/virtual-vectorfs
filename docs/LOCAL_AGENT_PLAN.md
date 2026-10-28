@@ -1,7 +1,7 @@
 # Local Personal Agent — Delivery Plan
 
-**Status:** Work sequence approved on 2026-10-11; the companion agent has not been built.
-**Authority:** This file is the source of truth for deliverables, dependencies, and acceptance gates until the companion has its own repository and this plan is deliberately transferred there. Keep issue trackers and execution logs linked to these IDs, not as competing plans. Update this file when a decision changes scope or a gate; do not mark a task complete because code was written or a test was intended to run.
+**Status:** Work sequence approved on 2026-10-11; search-library checkpoint updated 2026-10-28. F2 is integrated and validated; the native scoped-read prototype is reviewed but dependency adoption remains pending.
+**Authority:** This is the historical cross-product roadmap and the search repository's handoff contract. Familiar owns its separate implementation and current execution records; this repository does not attest companion completion. Keep handoffs linked to these IDs, not as competing live plans. Do not mark a task complete because code was written or a test was intended to run. See the [product checkpoint](PRODUCT_CHECKPOINT.md) for the current boundary.
 
 This is a plan for a **separate Go product** that imports `github.com/ZanzyTHEbar/virtual-vectorfs/search`. This repository remains a search-only library. F0 published the public-readiness cleanup, this plan, and its README link together; do not blend that work into agent implementation.
 
@@ -21,11 +21,11 @@ This is a plan for a **separate Go product** that imports `github.com/ZanzyTHEba
 | --- | --- | --- | --- | --- |
 | **F0** | — | Review the existing public-readiness cleanup, this plan, and its README link together; publish without agent implementation and without rewriting unrelated work. | Search library's vector-enabled build, race tests, vet, Rust checks, and final diff review pass; published README link resolves to the published plan; publishing requires an explicit user request. | Complete — published in `8c03f5c`; remote plan link verified |
 | **F1** | — | Agree on the companion's write-scope, threat, retention, hardware, privacy, and undo contract; record supported and explicitly refused operations. | Every supported write has preconditions, durable recovery, undo, and conflict behavior; user accepts assumptions before W1. | Complete as a policy decision — delegated defaults reviewed; runtime gates pending |
-| **F2** | F0 | Add a bounded version-aware read/expand API for indexed documents; keep previews and exact match evidence distinct. | Tests cover caller records, changed/stale/missing files, renames, size limits, and verified source ranges. Grep's file offset and display-relative match ranges are interpreted correctly even for truncated lines; caller-record ranges are independently validated. | Integrated locally — F2 gates revalidated 2026-10-28; not published remotely |
+| **F2** | F0 | Add a bounded version-aware read/expand API for indexed documents; keep previews and exact match evidence distinct. | Tests cover caller records, changed/stale/missing files, renames, size limits, and verified source ranges. Grep's file offset and display-relative match ranges are interpreted correctly even for truncated lines; caller-record ranges are independently validated. | Integrated — F2 gates revalidated 2026-10-28; included in this source publication checkpoint |
 | **F3** | F0 | Create a separate companion Go module and read-only `doctor` CLI for Linux, native libraries, search import, and local model endpoints. No agent loop or write tools. | Fresh downstream `go build -tags=vectors ./...` works with installed native dependencies; missing dependencies fail clearly and corpus files remain unchanged. | Planned |
 | **F4** | F1, F3 | Version a small representative corpus and judged tasks: exact lookup, sourced answer, cross-document reasoning, duplicates, and organization proposals, with negative controls. | Offline fixture loader verifies inputs and gold evidence; baseline retrieval measurements and predeclared task-success, latency, and RAM/VRAM criteria are reproducible. Measure actual end-to-end task success only after R6 exists. | Planned |
 
-**F integration:** F0–F4 verified; the search package still has no agent/model/mutation dependency.
+**F integration gate (not a completion claim):** verify F0–F4 before declaring the companion foundations complete. F0/F1 decisions and F2 search integration are recorded here; F3/F4 need the companion owner's evidence. The search package has no agent/model/write-broker dependency.
 
 ## Work set R — read-only vertical product
 
