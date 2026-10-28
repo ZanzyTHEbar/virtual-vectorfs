@@ -96,6 +96,8 @@ func main() {
 
 See [Quick Start](docs/QUICK_START.md) for vector provision, grep modes, records, and storage options. [Architecture](docs/ARCHITECTURE.md) documents component boundaries, update recovery, tiers, evidence, and current limits. The separate local-agent product has an [approved delivery plan](docs/LOCAL_AGENT_PLAN.md); it is not implemented in this library.
 
+[Search Improvements](docs/SEARCH_IMPROVEMENTS.md) records the approved FFF/Bleve/FAISS direction, measurement-gated work, performance goals, and safety requirements. [Historical LibSQL Findings](docs/HISTORICAL_LIBSQL_FINDINGS.md) preserves transferable lessons and evidence limits from the retired experiment; its implementation is not the architecture of this library.
+
 ## Search lanes
 
 - `FindFiles`: FFF fuzzy file/path search with scores and pagination.
