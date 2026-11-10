@@ -13,7 +13,7 @@ make
 make test
 ```
 
-`make native` builds the pinned FFF bridge and FAISS C API. Build output stays under ignored `build/` directories. The engine makes no network requests at runtime.
+`make native` builds the pinned FFF bridge and FAISS C API; fetching dependencies may require network access. Build output stays under ignored `build/` directories. The search API does not generate embeddings or call model services.
 
 ## 2. Open and synchronize a file corpus
 
@@ -21,8 +21,8 @@ make test
 ctx := context.Background()
 
 engine, err := search.Open(ctx, search.Options{
-    Root:         "/home/me/project",
-    IndexPath:    "/home/me/.cache/vvfs/project.bleve",
+    Root:         "./corpus", // must already exist
+    IndexPath:    "./state/project.bleve", // outside the corpus
     Storage:      search.StorageDisk,
     VectorDimensions: 384, // example only; must match the embedding model
     FilterFields: []string{"language", "kind"},
@@ -41,7 +41,7 @@ fmt.Printf("indexed=%d skipped=%d stale=%d errors=%d\n",
 fmt.Printf("per-file evidence: %s\n", report.EvidencePath)
 ```
 
-`SyncFiles` waits for FFF's initial catalog/watch readiness, reads FFF inventory pages, hashes eligible file contents, and writes bounded Bleve batches. FFF events continue to update the index after the initial sync. `Status()` reports readiness and background errors.
+These snippets assume a context, imports, and error-returning application function; they are not a standalone program. Create the corpus and state parent directories first. `SyncFiles` waits for FFF's initial catalog/watch readiness, reads FFF inventory pages, hashes eligible file contents, and writes bounded Bleve batches. FFF events continue to update the index after the initial sync. `Status()` reports readiness and background errors. See the [README limitations](../README.md#product-boundary) before using results as current source evidence or relying on filesystem scope.
 
 ## 3. Search file names, content, and metadata
 
@@ -71,9 +71,12 @@ hits, err := engine.Search(ctx, search.Query{
     Text: "recover missed file events",
     Limit: 10,
 })
+if err != nil {
+    return err
+}
 ```
 
-`FindFiles` and `Grep` are FFF lanes. Grep accepts a match target up to 80, at most 20 matches per file, a five-line context cap on each side, a 384-byte output cap per line/context, a 16 MiB file cap, and a 500 ms search time budget. Since FFF completes the current file before paging, a page can return up to 99 matches. Use `NextFileOffset` for continuation. Keyword, semantic, and hybrid queries use Bleve. FFF path/grep scores are not mixed with Bleve scores; if a future unified search combines lanes, it should fuse ranks rather than raw score scales.
+`FindFiles` and `Grep` are FFF lanes. Grep accepts a match target up to 80, at most 20 matches per file, a five-line context cap on each side, a 384-byte output cap per line/context, a 16 MiB file cap, and a cooperative 500 ms search time budget (not a hard I/O deadline). Since FFF completes the current file before paging, a page can return up to 99 matches. Use `NextFileOffset` for continuation. Keyword, semantic, and hybrid queries use Bleve. FFF path/grep scores are not mixed with Bleve scores.
 
 Hybrid search uses RRF in one Bleve request by default. Set `IncludeRankEvidence: true` only when per-channel ranks are needed; in hybrid mode it adds two extra Bleve searches.
 
@@ -171,7 +174,7 @@ FFF-managed files do not automatically have `language` or `kind` metadata. To se
 
 `StorageDisk` (default) persists the Bleve index locally; `StorageMemory` keeps search state ephemeral. Evidence remains on disk in separate disk/memory evidence directories. FFF mmap/content cache budgets are configured separately.
 
-`VectorQuality` selects Bleve's FAISS-backed `latency`, `recall`, or `memory_efficient` index optimization when the index is created. This changes the physical index and requires a rebuild; it is not a per-query exact/approximate switch. No custom exact vector-scan mode is implemented yet.
+`VectorQuality` selects Bleve's FAISS-backed `latency`, `recall`, or `memory_efficient` index optimization when the index is created. This changes the physical index and requires a rebuild; it is not a per-query exact/approximate switch. No custom exact vector-scan mode is provided.
 
 ## 7. Build in another Go driver
 

@@ -19,7 +19,7 @@ help:
 	@printf '%s\n' \
 	  'build           Build all packages with vector support enabled' \
 	  'native-fff      Build the pinned FFF Rust bridge' \
-	  'native-faiss    Build Bleve's pinned FAISS C API' \
+	  'native-faiss    Build Bleve'\''s pinned FAISS C API' \
 	  'native          Build both native dependencies' \
 	  'rust-test       Test, lint, and format-check the FFF bridge' \
 	  'test            Run the full Linux suite, including vectors and race checks' \

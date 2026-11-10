@@ -2,7 +2,7 @@
 
 A Linux-only local search library for files and caller-supplied records. FFF provides the file catalog, fuzzy path search, grep, and watch events. Bleve provides persisted full-text, metadata, and vector search.
 
-The Go search engine does not create embeddings or call remote services. Drivers supply document and query vectors. Runtime indexing and queries stay local.
+The Go search engine does not create embeddings or call model services. Callers supply document and query vectors. This is a Go library, not a CLI, agent application, or FUSE filesystem.
 
 ## Build and test
 
@@ -19,7 +19,7 @@ make test
 make vet
 ```
 
-`make` is the default vector-enabled build. It supplies Bleve's required `vectors` build tag and builds FFF `fff-search` 0.11.0 plus Bleve 2.6.0's compatible FAISS C API into `build/native`. Native sources are downloaded on the first build; runtime network access is not used. `make test-fast` runs the same vector-enabled suite without the race detector. Native output stays under ignored `build/` paths.
+`make` is the default vector-enabled build. It supplies Bleve's required `vectors` build tag and builds FFF `fff-search` 0.11.0 plus Bleve 2.6.0's compatible FAISS C API into `build/native`. The first build fetches dependencies and requires network access unless they are already available. `make test-fast` runs the vector-enabled Go suite without the race detector. Native output stays under ignored `build/` paths. The CI configuration targets Linux; other platforms are not documented as supported.
 
 For another Go module, first build the native libraries from a checkout of this repository; the Go import alone cannot install them. From the repository root, install into a writable prefix:
 
@@ -58,8 +58,8 @@ import (
 func main() {
 	ctx := context.Background()
 	engine, err := search.Open(ctx, search.Options{
-		Root:             "/home/me/project",
-		IndexPath:        "/home/me/.cache/vvfs/project.bleve",
+		Root:             "./corpus",             // existing directory containing files to index
+		IndexPath:        "./state/project.bleve", // outside the corpus
 		Storage:          search.StorageDisk,
 		VectorDimensions: 384, // example only; must match the driver's embedding model
 		FilterFields:     []string{"kind", "language"},
@@ -94,14 +94,7 @@ func main() {
 }
 ```
 
-See [Quick Start](docs/QUICK_START.md) for vector provision, grep modes, records, and storage options. [Architecture](docs/ARCHITECTURE.md) documents component boundaries, update recovery, tiers, evidence, and current limits. The separate local-agent product has an [approved delivery plan](docs/LOCAL_AGENT_PLAN.md); it is not implemented in this library.
-
-The [product checkpoint](docs/PRODUCT_CHECKPOINT.md) separates integrated search/F2
-from Familiar-owned milestones. [Experimental scoped native reads](docs/SCOPED_READ_PROTOTYPE.md)
-and their reviewed source patch are available for explicit scratch builds only;
-normal registry builds remain Ambient, with no production dependency adoption.
-
-[Search Improvements](docs/SEARCH_IMPROVEMENTS.md) records the approved FFF/Bleve/FAISS direction, measurement-gated work, performance goals, and safety requirements. [Historical LibSQL Findings](docs/HISTORICAL_LIBSQL_FINDINGS.md) preserves transferable lessons and evidence limits from the retired experiment; its implementation is not the architecture of this library.
+Create `corpus` and the parent `state` directory before running the example. The example uses keyword search and does not generate or attach embeddings. See [Quick Start](docs/QUICK_START.md) for vectors, grep, caller records, version-checked excerpts, and storage options. Examples describe the source API; a successful build requires the native dependencies above.
 
 ## Search lanes
 
@@ -130,8 +123,14 @@ The current file policy indexes one UTF-8 text document per file, rejects binary
 
 ## Product boundary
 
-This is a search library, not an AI Agent application. It contains no LLM, embedding model, prompt/harness code, agent-memory graph, SQL database server, organization/move workflow, or FUSE mount. Offline embedding can be added later as a separate opt-in component that uses the vector task/update API.
+Indexing is eventually consistent: the FFF catalog, live files, and Bleve index do not share a transaction. Check `Hit.Stale`, `Status`, and sync errors rather than assuming every hit reflects the current filesystem.
+
+`Expand` requires a hit's ID, expected hash, expected source, and explicit field. It returns UTF-8 byte windows (4 KiB by default, at most 16 KiB), not query-match locations. File expansion reads and hashes the entire eligible live file; caller-record expansion reads the selected indexed field and never opens the record's `Path`. A caller field may be materialized in full, so the output cap is not a total-memory bound. Expansion is not an atomic filesystem/index snapshot. `Hit.ByteOffset` is a preview offset, and grep match ranges are display-relative; verify source bytes before treating either as an exact citation.
+
+The default `NativeReadAmbient` uses FFF's Git discovery/status and ignore behavior; the configured root is not a process-wide filesystem sandbox. `NativeReadRootOnly` is experimental and rejected by normal native builds. Its [optional source patch](native/patches/README.md) requires a separate patched build, disables ignore rules, and includes hidden files. Neither policy supplies caller authorization or a security sandbox. Context cancellation does not imply a hard deadline for native calls or filesystem I/O.
+
+There is no built-in LLM, embedding model, document parser, file-organization workflow, SQL server, or FUSE mount. Applications own access control and embedding-model compatibility; equal vector dimensions alone do not establish model compatibility.
 
 ## License and dependencies
 
-This repository is [MIT licensed](LICENSE). It builds against [FFF (MIT)](https://github.com/dmtrKovalenko/fff/blob/main/LICENSE), [FAISS (MIT)](https://github.com/blevesearch/faiss/blob/fff814dea2bdda020363506904979b204ee201aa/LICENSE), and [Bleve (Apache-2.0)](https://github.com/blevesearch/bleve/blob/v2.6.0/LICENSE). If you distribute compiled binaries, include the applicable upstream licenses and notices; this source repository does not ship prebuilt native libraries.
+This repository is [MIT licensed](LICENSE). It builds against [FFF (MIT)](native/patches/fff-search.LICENSE), [FAISS (MIT)](https://github.com/blevesearch/faiss/blob/fff814dea2bdda020363506904979b204ee201aa/LICENSE), and [Bleve (Apache-2.0)](https://github.com/blevesearch/bleve/blob/v2.6.0/LICENSE). If you distribute compiled binaries, include the applicable upstream licenses and notices; this source repository does not ship prebuilt native libraries.
